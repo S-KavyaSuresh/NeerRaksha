@@ -1,0 +1,10 @@
+{
+  "simulation_run_id": "44444444-4444-4444-8444-444444444444",
+  "is_sample": true,
+  "values": [
+    {"minute": 0, "depth_m": 0, "flooded_area_km2": 0},
+    {"minute": 15, "depth_m": 2.1, "flooded_area_km2": 9.6},
+    {"minute": 30, "depth_m": 5.3, "flooded_area_km2": 24.2},
+    {"minute": 60, "depth_m": 8.4, "flooded_area_km2": 42.8}
+  ]
+}
