@@ -8,7 +8,7 @@ import ExportsPage from './ExportsPage'
 const pages={
   scenario:['01 / SCENARIO STUDIO','Explore the breach assumptions',ScenarioStudio],
   simulation:['02 / SIMULATION','A minute-by-minute perspective',SimulationPage],
-  comparison:['03 / MODEL COMPARISON','Compare prototype breach scenarios',ComparisonPage],
+  comparison:['03 / MODEL COMPARISON','Compare synthetic breach scenarios',ComparisonPage],
   impact:['04 / IMPACT ANALYSIS','Where the water meets the city',ImpactPage],
   exports:['05 / EXPORT CENTER','Take the intelligence with you',ExportsPage]
 }

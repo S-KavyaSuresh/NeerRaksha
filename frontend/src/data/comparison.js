@@ -4,9 +4,9 @@ export const comparisonScenarios = [
 ]
 export const comparisonMetrics = [
   {key:'area',label:'Flooded area',unit:'km²'},
-  {key:'depth',label:'Maximum prototype depth',unit:'m'},
-  {key:'population',label:'Exposed prototype population',unit:'people'},
-  {key:'arrival',label:'Sample arrival time',unit:'min'},
+  {key:'depth',label:'Maximum modelled depth',unit:'m'},
+  {key:'population',label:'Exposed modelled population',unit:'people'},
+  {key:'arrival',label:'Modelled arrival time',unit:'min'},
   {key:'assets',label:'Affected assets',unit:'assets'},
-  {key:'runtime',label:'Sample processing time',unit:'s'}
+  {key:'runtime',label:'Simulation processing time',unit:'s'}
 ]

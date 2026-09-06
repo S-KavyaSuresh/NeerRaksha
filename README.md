@@ -1,6 +1,6 @@
-# JalDrishti
+# NeerRaksha
 
-Dam Break & Flood Intelligence Platform — SIH Milestone 1.
+Dam Break & Flood Intelligence Platform.
 
 A local React/Vite command center with CesiumJS, a FastAPI read API, and a Neon-ready PostgreSQL schema. This repository is the `jaldrishti/` project root; no second nested project folder is needed.
 

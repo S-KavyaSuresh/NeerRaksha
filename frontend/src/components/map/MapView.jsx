@@ -7,26 +7,22 @@ import {
 } from 'react'
 
 import {
-  Viewer,
-  Entity,
-  CameraFlyTo
-} from 'resium'
-
-import {
+  Viewer as CesiumViewer,
   Cartesian3,
   Cartesian2,
   Color,
+  ColorMaterialProperty,
   EllipsoidTerrainProvider,
   UrlTemplateImageryProvider,
   OpenStreetMapImageryProvider,
-  Math as CesiumMath,
-  HeightReference,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   Cartographic,
-  defined,
+  Math as CesiumMath,
   LabelStyle,
-  Rectangle
+  BoundingSphere,
+  HeadingPitchRange,
+  PolygonHierarchy
 } from 'cesium'
 
 import {
@@ -47,38 +43,18 @@ import {
 } from 'lucide-react'
 
 import { useDashboard } from '../../store/useDashboard'
-
-import { riverPath } from '../../data/sample'
-
 import {
-  sampleBuildings,
-  sampleRoads,
-  sampleFacilities,
-  assetAffected,
-  layerCounts
+  assetAffected
 } from '../../data/prototype.js'
 
 import IconButton from '../common/IconButton'
 
 import {
-  loadTerrain,
-  isTokenConfigured
-} from '../../services/cesium'
-
-import {
   getFloodVisual,
-  depthBands,
-  validFloodBounds
+  depthBands
 } from './floodVisual.js'
 
-
-const destination = Cartesian3.fromDegrees(
-  83.97,
-  21.32,
-  30000
-)
-
-const orientation = {
+const INITIAL_ORIENTATION = {
   heading: 0,
   pitch: CesiumMath.toRadians(-58),
   roll: 0
@@ -93,41 +69,169 @@ const layerOptions = [
   ['facilities', Hospital, 'Facilities']
 ]
 
-const cssColor = (
-  value,
-  alpha = 1
-) => Color
-  .fromCssColorString(value)
-  .withAlpha(alpha)
+const PRECOMPUTED_MINUTES = Array.from(
+  { length: 60 },
+  (_, index) => index + 1
+)
 
-const assetPositions = new Map(
-  [
-    ...sampleBuildings,
-    ...sampleFacilities
-  ].map(asset => [
-    asset.id,
-    Cartesian3.fromDegrees(
-      asset.lon,
-      asset.lat
+function cssColor(value, alpha = 1) {
+  return Color.fromCssColorString(value).withAlpha(alpha)
+}
+
+function colorMaterial(value, alpha = 1) {
+  return new ColorMaterialProperty(
+    cssColor(value, alpha)
+  )
+}
+
+function normalizePath(points) {
+  if (!Array.isArray(points)) {
+    return []
+  }
+
+  if (
+    points.length >= 2 &&
+    typeof points[0] === 'number'
+  ) {
+    const output = []
+
+    for (
+      let index = 0;
+      index < points.length - 1;
+      index += 2
+    ) {
+      const lon = Number(points[index])
+      const lat = Number(points[index + 1])
+
+      if (
+        Number.isFinite(lon) &&
+        Number.isFinite(lat)
+      ) {
+        output.push([lon, lat])
+      }
+    }
+
+    return output
+  }
+
+  return points
+    .map(point => {
+      if (
+        Array.isArray(point) &&
+        point.length >= 2
+      ) {
+        const lon = Number(point[0])
+        const lat = Number(point[1])
+
+        return Number.isFinite(lon) &&
+          Number.isFinite(lat)
+          ? [lon, lat]
+          : null
+      }
+
+      if (
+        point &&
+        typeof point === 'object'
+      ) {
+        const lon = Number(
+          point.lon ??
+          point.lng ??
+          point.longitude
+        )
+
+        const lat = Number(
+          point.lat ??
+          point.latitude
+        )
+
+        return Number.isFinite(lon) &&
+          Number.isFinite(lat)
+          ? [lon, lat]
+          : null
+      }
+
+      return null
+    })
+    .filter(Boolean)
+}
+
+function toPolylinePositions(
+  points,
+  height = 80
+) {
+  const path = normalizePath(points)
+  const values = []
+
+  path.forEach(([lon, lat]) => {
+    values.push(lon, lat, height)
+  })
+
+  if (values.length < 6) {
+    return []
+  }
+
+  return Cartesian3.fromDegreesArrayHeights(
+    values
+  )
+}
+
+function toPolygonPositions(
+  ring,
+  height = 20
+) {
+  const path = normalizePath(ring)
+  const values = []
+
+  path.forEach(([lon, lat]) => {
+    values.push(lon, lat, height)
+  })
+
+  if (values.length < 9) {
+    return []
+  }
+
+  return Cartesian3.fromDegreesArrayHeights(
+    values
+  )
+}
+
+function toGroundPositions(ring) {
+  const path = normalizePath(ring)
+
+  if (path.length < 3) {
+    return []
+  }
+
+  const values = []
+
+  path.forEach(([lon, lat]) => {
+    values.push(lon, lat)
+  })
+
+  return Cartesian3.fromDegreesArray(values)
+}
+
+function displayMinuteFor(value) {
+  const minute = Number(value)
+
+  if (
+    !Number.isFinite(minute) ||
+    minute <= 0
+  ) {
+    return 0
+  }
+
+  return Math.max(
+    1,
+    Math.min(
+      60,
+      Math.round(minute)
     )
-  ])
-)
-
-const roadGeometry = new Map(
-  sampleRoads.map(asset => [
-    asset.id,
-    Cartesian3.fromDegreesArray(
-      asset.points.flat()
-    )
-  ])
-)
-
-const riverPositions = Cartesian3.fromDegreesArray(
-  riverPath
-)
-
+  )
+}
 
 export default function MapView() {
+  const containerRef = useRef(null)
   const viewerRef = useRef(null)
 
   const imageryRef = useRef({
@@ -135,24 +239,49 @@ export default function MapView() {
     streets: null
   })
 
-  const [ready, setReady] = useState(false)
+  const buildingEntities = useRef([])
+  const roadEntities = useRef([])
+  const facilityEntities = useRef([])
+  const studyEntities = useRef([])
 
-  const [mapError, setMapError] = useState('')
+  /*
+   * Flood entities are PRECOMPUTED.
+   *
+   * Structure:
+   * Map<minute, Array<{ entity, bandId }>>
+   *
+   * We never mutate polygon geometry during playback.
+   * We only change entity.show.
+   */
+  const floodFramesRef = useRef(
+    new Map()
+  )
 
-  const [terrainError, setTerrainError] = useState('')
+  const metadata = useRef(
+    new Map()
+  )
 
-  const [loading, setLoading] = useState(true)
+  const [
+    ready,
+    setReady
+  ] = useState(false)
 
-  const [initializationFailed, setInitializationFailed] =
-    useState(false)
+  const [
+    loading,
+    setLoading
+  ] = useState(true)
 
-  const [terrainActive, setTerrainActive] =
-    useState(false)
+  const [
+    mapError,
+    setMapError
+  ] = useState('')
 
-  const [coordinates, setCoordinates] = useState({
+  const [
+    coordinates,
+    setCoordinates
+  ] = useState({
     lon: 83.87,
-    lat: 21.53,
-    elevation: null
+    lat: 21.53
   })
 
   const {
@@ -161,54 +290,45 @@ export default function MapView() {
     toggleLayer,
     selected,
     select,
-    focusRequest
+    focusRequest,
+    selectedStudyCase
   } = useDashboard()
 
   const visualMinute =
-    Math.floor(minute * 4) / 4
+    Math.round(
+      minute * 4
+    ) / 4
 
   const frame = useMemo(
-    () => getFloodVisual(visualMinute),
+    () =>
+      getFloodVisual(
+        visualMinute
+      ),
     [visualMinute]
   )
 
-  const floodGeometry = useMemo(
-    () =>
-      frame.bands.map(band => ({
-        ...band,
-        positions: Cartesian3.fromDegreesArray(
-          band.ring.flat()
-        )
-      })),
-    [frame]
-  )
+  const activeDisplayMinute =
+    displayMinuteFor(
+      visualMinute
+    )
 
-  const counts = layerCounts(
-    layers,
-    frame
-  )
+  const counts = useMemo(() => ({
+    buildings: { total: selectedStudyCase?.exposure?.buildings?.length || 0, visible: layers.buildings ? selectedStudyCase?.exposure?.buildings?.length || 0 : 0 },
+    roads: { total: selectedStudyCase?.exposure?.roads?.length || 0, visible: layers.roads ? selectedStudyCase?.exposure?.roads?.length || 0 : 0 },
+    facilities: { total: selectedStudyCase?.exposure?.facilities?.length || 0, visible: layers.facilities ? selectedStudyCase?.exposure?.facilities?.length || 0 : 0 },
+    flood: { total: frame.ring.length ? 1 : 0, visible: layers.flood ? 1 : 0 }
+  }), [selectedStudyCase, layers, frame.ring.length])
 
-  const reduced =
-    window
-      .matchMedia(
-        '(prefers-reduced-motion: reduce)'
-      )
-      .matches
-
-  const attachViewer = useCallback(node => {
-    viewerRef.current = node
-
-    if (
-      node?.cesiumElement &&
-      !node.cesiumElement.isDestroyed()
-    ) {
-      setReady(true)
-      setInitializationFailed(false)
-    }
-  }, [])
+  const selectedBand =
+    frame.bands.find(
+      band =>
+        band.id ===
+        selected?.bandId
+    )
 
   const detail =
-    selected?.type === 'flood'
+    selected?.type ===
+    'flood'
       ? {
           ...frame,
           type: 'flood'
@@ -217,9 +337,10 @@ export default function MapView() {
 
   const threat =
     detail &&
-    !['dam', 'flood'].includes(
-      detail.type
-    )
+    ![
+      'dam',
+      'flood'
+    ].includes(detail.type)
       ? assetAffected(
           detail,
           frame
@@ -230,59 +351,63 @@ export default function MapView() {
         : 'Outside current flood'
       : null
 
-  const selectedBand =
-    frame.bands.find(
-      band =>
-        band.id === selected?.bandId
-    )
-
-
+  /*
+   * CREATE CESIUM ONCE
+   */
   useEffect(() => {
-    if (ready) {
+    if (!containerRef.current) {
       return undefined
     }
 
-    const timer = setTimeout(
-      () =>
-        setInitializationFailed(true),
-      12000
-    )
-
-    return () => {
-      clearTimeout(timer)
-    }
-  }, [ready])
-
-
-  useEffect(() => {
-    if (!ready) {
-      return undefined
-    }
-
-    const viewer =
-      viewerRef.current?.cesiumElement
-
-    if (
-      !viewer ||
-      viewer.isDestroyed()
-    ) {
-      return undefined
-    }
-
-    const imageryLayers =
-      viewer.imageryLayers
-
-    if (!imageryLayers) {
-      setMapError(
-        'Imagery system unavailable. Map overlays remain available.'
-      )
-
-      return undefined
-    }
+    let viewer = null
+    let handler = null
 
     try {
-      imageryLayers.removeAll()
+      viewer =
+        new CesiumViewer(
+          containerRef.current,
+          {
+            animation: false,
+            timeline: false,
 
+            /*
+             * Prevent default Cesium Ion imagery.
+             */
+            baseLayer: false,
+            baseLayerPicker: false,
+
+            terrainProvider:
+              new EllipsoidTerrainProvider(),
+
+            geocoder: false,
+            homeButton: false,
+            sceneModePicker: false,
+            navigationHelpButton:
+              false,
+            fullscreenButton: false,
+            infoBox: false,
+            selectionIndicator:
+              false,
+            shouldAnimate: false,
+
+            /*
+             * Always render after state changes.
+             * This avoids stale frames without needing
+             * aggressive requestRender calls.
+             */
+            requestRenderMode: false
+          }
+        )
+
+      viewerRef.current =
+        viewer
+
+      viewer.scene.globe.baseColor =
+        cssColor('#172d39')
+
+      /*
+       * BASEMAPS
+       */
       const streetsProvider =
         new OpenStreetMapImageryProvider({
           url:
@@ -295,18 +420,25 @@ export default function MapView() {
             'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
           maximumLevel: 18,
           credit:
-            'Tiles © Esri — Esri, Maxar, Earthstar Geographics and the GIS User Community'
+            'Tiles © Esri'
         })
 
       const streets =
-        imageryLayers.addImageryProvider(
-          streetsProvider
-        )
+        viewer.imageryLayers
+          .addImageryProvider(
+            streetsProvider
+          )
 
       const satellite =
-        imageryLayers.addImageryProvider(
-          satelliteProvider
-        )
+        viewer.imageryLayers
+          .addImageryProvider(
+            satelliteProvider
+          )
+
+      imageryRef.current = {
+        satellite,
+        streets
+      }
 
       const satelliteEnabled =
         useDashboard
@@ -320,266 +452,281 @@ export default function MapView() {
       streets.show =
         !satelliteEnabled
 
-      imageryRef.current = {
-        satellite,
-        streets
-      }
-
-      viewer.scene.globe.baseColor =
-        cssColor('#172d39')
-
-      const removeStreetError =
-        streetsProvider
-          .errorEvent
-          .addEventListener(() => {
-            setMapError(
-              'Some street-map tiles are unavailable. Sample overlays remain usable.'
+      /*
+       * PRECOMPUTE ALL 60 FLOOD FRAMES
+       *
+       * This is the important anti-blink fix.
+       *
+       * Cesium does not have to rebuild PolygonGraphics
+       * while Play is running.
+       */
+      PRECOMPUTED_MINUTES.forEach(
+        frameMinute => {
+          const snapshot =
+            getFloodVisual(
+              frameMinute
             )
-          })
 
-      const removeSatelliteError =
-        satelliteProvider
-          .errorEvent
-          .addEventListener(() => {
-            setMapError(
-              'Some satellite tiles are unavailable. Sample overlays remain usable.'
-            )
-          })
+          const entities = []
 
-      return () => {
-        removeStreetError()
-        removeSatelliteError()
+          snapshot.bands.forEach(
+            (
+              band,
+              index
+            ) => {
+              const positions =
+                toPolygonPositions(
+                  band.ring,
+                  20 +
+                    index * 10
+                )
 
-        imageryRef.current = {
-          satellite: null,
-          streets: null
+              if (
+                positions.length <
+                3
+              ) {
+                return
+              }
+
+              const entity =
+                viewer.entities.add({
+                  id:
+                    `prototype-flood-${frameMinute}-${band.id}`,
+
+                  name:
+                    `Modelled flood T+${frameMinute} · ${band.label}`,
+
+                  show: false,
+
+                  polygon: {
+                    hierarchy:
+                      new PolygonHierarchy(
+                        positions
+                      ),
+
+                    perPositionHeight:
+                      true,
+
+                    material:
+                      colorMaterial(
+                        band.color,
+                        0.54
+                      ),
+
+                    outline:
+                      false
+                  }
+                })
+
+              metadata.current.set(
+                entity.id,
+                {
+                  type: 'flood',
+                  bandId: band.id
+                }
+              )
+
+              entities.push({
+                entity,
+                bandId: band.id
+              })
+            }
+          )
+
+          floodFramesRef.current.set(
+            frameMinute,
+            entities
+          )
         }
-      }
-    } catch {
-      setMapError(
-        'Basemap initialization failed. Sample overlays remain available.'
       )
 
-      return undefined
-    }
-  }, [ready])
-
-
-  useEffect(() => {
-    if (!ready) {
-      return undefined
-    }
-
-    const viewer =
-      viewerRef.current?.cesiumElement
-
-    if (
-      !viewer ||
-      viewer.isDestroyed()
-    ) {
-      return undefined
-    }
-
-    const removeError =
-      viewer
-        .scene
-        .renderError
-        .addEventListener(() => {
-          setMapError(
-            'The 3D renderer stopped. Reload to restore the map.'
-          )
-        })
-
-    const removeLoading =
-      viewer
-        .scene
-        .globe
-        .tileLoadProgressEvent
-        .addEventListener(count => {
-          if (!count) {
-            setLoading(false)
-          }
-        })
-
-    const timer = setTimeout(
-      () =>
-        setLoading(false),
-      8000
-    )
-
-    let handler = null
-
-    try {
+      /*
+       * FEATURE PICKING
+       */
       handler =
         new ScreenSpaceEventHandler(
           viewer.scene.canvas
         )
 
       handler.setInputAction(
-        event => {
-          if (
-            viewer.isDestroyed()
-          ) {
+        movement => {
+          const picked =
+            viewer.scene.pick(
+              movement.position
+            )
+
+          const entity =
+            picked?.id
+
+          if (!entity) {
             return
           }
 
-          const ray =
-            viewer
-              .camera
-              .getPickRay(
-                event.endPosition
-              )
+          const item =
+            metadata.current.get(
+              entity.id
+            )
 
-          const point =
-            ray &&
-            viewer
-              .scene
-              .globe
-              .pick(
-                ray,
-                viewer.scene
-              )
-
-          if (
-            defined(point)
-          ) {
-            const position =
-              Cartographic
-                .fromCartesian(point)
-
-            setCoordinates({
-              lon:
-                CesiumMath
-                  .toDegrees(
-                    position.longitude
-                  ),
-              lat:
-                CesiumMath
-                  .toDegrees(
-                    position.latitude
-                  ),
-              elevation:
-                terrainActive
-                  ? position.height
-                  : null
-            })
+          if (item) {
+            useDashboard
+              .getState()
+              .select(item)
           }
         },
-        ScreenSpaceEventType.MOUSE_MOVE
+        ScreenSpaceEventType
+          .LEFT_CLICK
       )
-    } catch {
+
+      /*
+       * COORDINATES
+       */
+      handler.setInputAction(
+        movement => {
+          const ray =
+            viewer.camera
+              .getPickRay(
+                movement.endPosition
+              )
+
+          if (!ray) {
+            return
+          }
+
+          const position =
+            viewer.scene.globe.pick(
+              ray,
+              viewer.scene
+            )
+
+          if (!position) {
+            return
+          }
+
+          const cartographic =
+            Cartographic.fromCartesian(
+              position
+            )
+
+          setCoordinates({
+            lon:
+              CesiumMath.toDegrees(
+                cartographic.longitude
+              ),
+
+            lat:
+              CesiumMath.toDegrees(
+                cartographic.latitude
+              )
+          })
+        },
+        ScreenSpaceEventType
+          .MOUSE_MOVE
+      )
+
+      setLoading(false)
+      setReady(true)
+
+    } catch (error) {
+      console.error(error)
+
       setMapError(
-        'Map pointer inspection is unavailable.'
+        '3D map initialization failed.'
       )
+
+      setLoading(false)
     }
 
     return () => {
-      removeError()
-      removeLoading()
-      clearTimeout(timer)
-
       if (
         handler &&
         !handler.isDestroyed()
       ) {
         handler.destroy()
       }
+
+      metadata.current.clear()
+      floodFramesRef.current.clear()
+
+      buildingEntities.current =
+        []
+
+      roadEntities.current =
+        []
+
+      facilityEntities.current =
+        []
+
+      studyEntities.current = []
+
+      imageryRef.current = {
+        satellite: null,
+        streets: null
+      }
+
+      if (
+        viewer &&
+        !viewer.isDestroyed()
+      ) {
+        viewer.destroy()
+      }
+
+      viewerRef.current =
+        null
     }
-  }, [
-    ready,
-    terrainActive
-  ])
+  }, [])
 
-
+  /* Update only case-owned entities and camera; the Cesium Viewer stays mounted. */
   useEffect(() => {
-    if (!ready) {
-      return undefined
-    }
+    const viewer = viewerRef.current
+    if (!ready || !viewer || viewer.isDestroyed() || !selectedStudyCase) return
+    const longitude = Number(selectedStudyCase.longitude)
+    const latitude = Number(selectedStudyCase.latitude)
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return
 
-    const viewer =
-      viewerRef.current?.cesiumElement
-
-    if (
-      !viewer ||
-      viewer.isDestroyed()
-    ) {
-      return undefined
-    }
-
-    let cancelled = false
-
-    let removeTerrainError =
-      () => {}
-
-    setTerrainActive(false)
-
-    setTerrainError('')
-
-    viewer.terrainProvider =
-      new EllipsoidTerrainProvider()
-
-    loadTerrain(
-      layers.terrain
-    ).then(result => {
-      if (
-        cancelled ||
-        viewer.isDestroyed()
-      ) {
-        return
-      }
-
-      viewer.terrainProvider =
-        result.provider
-
-      setTerrainActive(
-        result.status === 'active'
-      )
-
-      setTerrainError(
-        result.warning
-      )
-
-      if (
-        result.provider
-          ?.errorEvent
-          ?.addEventListener
-      ) {
-        removeTerrainError =
-          result.provider
-            .errorEvent
-            .addEventListener(
-              () => {
-                if (
-                  cancelled ||
-                  viewer.isDestroyed()
-                ) {
-                  return
-                }
-
-                viewer.terrainProvider =
-                  new EllipsoidTerrainProvider()
-
-                setTerrainActive(false)
-
-                setTerrainError(
-                  'Ion terrain tiles unavailable · ellipsoid terrain active'
-                )
-              }
-            )
-      }
+    studyEntities.current.forEach(entity => {
+      metadata.current.delete(entity.id)
+      viewer.entities.remove(entity)
     })
+    studyEntities.current = []
+    buildingEntities.current = []
+    roadEntities.current = []
+    facilityEntities.current = []
 
-    return () => {
-      cancelled = true
-
-      removeTerrainError()
+    const addPoint = (asset, type, color, size) => {
+      const assetLongitude = Number(asset.longitude)
+      const assetLatitude = Number(asset.latitude)
+      if (!Number.isFinite(assetLongitude) || !Number.isFinite(assetLatitude)) return null
+      const entity = viewer.entities.add({
+        id: `${type}-${selectedStudyCase.case_id}-${asset.id}`,
+        name: asset.name || asset.asset_type || type,
+        show: layers[type === 'building' ? 'buildings' : `${type}s`],
+        position: Cartesian3.fromDegrees(assetLongitude, assetLatitude, 180),
+        point: { pixelSize: size, color, outlineColor: Color.WHITE, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY }
+      })
+      const item = { ...asset, type, kind: asset.asset_type || type, lon: assetLongitude, lat: assetLatitude }
+      metadata.current.set(entity.id, item)
+      studyEntities.current.push(entity)
+      return { entity, asset: item }
     }
-  }, [
-    ready,
-    layers.terrain
-  ])
 
+    const dam = viewer.entities.add({
+      id: `dam-${selectedStudyCase.case_id}`,
+      name: selectedStudyCase.dam_name,
+      position: Cartesian3.fromDegrees(longitude, latitude, 180),
+      point: { pixelSize: 18, color: cssColor('#60eef2'), outlineColor: Color.WHITE, outlineWidth: 3, disableDepthTestDistance: Number.POSITIVE_INFINITY },
+      label: { text: `${selectedStudyCase.dam_name} DAM`.toUpperCase(), font: 'bold 13px sans-serif', fillColor: Color.WHITE, style: LabelStyle.FILL_AND_OUTLINE, outlineColor: cssColor('#102332'), outlineWidth: 4, pixelOffset: new Cartesian2(0, -28), disableDepthTestDistance: Number.POSITIVE_INFINITY }
+    })
+    metadata.current.set(dam.id, { type: 'dam', name: selectedStudyCase.dam_name })
+    studyEntities.current.push(dam)
+    buildingEntities.current = (selectedStudyCase.exposure?.buildings || []).map(asset => addPoint(asset, 'building', Color.WHITE, 14)).filter(Boolean)
+    roadEntities.current = (selectedStudyCase.exposure?.roads || []).map(asset => addPoint(asset, 'road', cssColor('#ffd166'), 13)).filter(Boolean)
+    facilityEntities.current = (selectedStudyCase.exposure?.facilities || []).map(asset => addPoint(asset, 'facility', cssColor('#ffc078'), 16)).filter(Boolean)
+    viewer.camera.flyTo({ destination: Cartesian3.fromDegrees(longitude, latitude, 30000), orientation: INITIAL_ORIENTATION, duration: 0.8 })
+  }, [ready, selectedStudyCase])
 
+  /*
+   * SATELLITE / OSM
+   */
   useEffect(() => {
     const {
       satellite,
@@ -593,38 +740,143 @@ export default function MapView() {
       return
     }
 
-    try {
-      if (
-        satellite.isDestroyed?.() ||
-        streets.isDestroyed?.()
-      ) {
-        return
-      }
+    satellite.show =
+      layers.satellite
 
-      satellite.show =
-        layers.satellite
-
-      streets.show =
-        !layers.satellite
-
-      setMapError('')
-    } catch {
-      setMapError(
-        'Unable to change basemap visibility.'
-      )
-    }
+    streets.show =
+      !layers.satellite
   }, [
-    ready,
     layers.satellite
   ])
 
+  /*
+   * TERRAIN
+   *
+   * There is no real terrain provider yet.
+   * Therefore this button is only status for now.
+   * Crucially, it DOES NOT swap providers or rebuild Cesium.
+   */
+  useEffect(() => {
+    const viewer =
+      viewerRef.current
 
+    if (
+      !viewer ||
+      viewer.isDestroyed()
+    ) {
+      return
+    }
+
+    viewer.terrainProvider =
+      viewer.terrainProvider ||
+      new EllipsoidTerrainProvider()
+  }, [
+    layers.terrain
+  ])
+
+  /*
+   * FLOOD FRAME VISIBILITY
+   *
+   * Geometry NEVER changes during playback.
+   * Only show flags change.
+   */
+  useEffect(() => {
+    if (!ready) {
+      return
+    }
+
+    floodFramesRef.current.forEach(
+      (
+        entities,
+        frameMinute
+      ) => {
+        const visible =
+          layers.flood &&
+          activeDisplayMinute > 0 &&
+          frameMinute ===
+            activeDisplayMinute
+
+        entities.forEach(
+          ({ entity }) => {
+            entity.show =
+              visible
+          }
+        )
+      }
+    )
+  }, [
+    ready,
+    layers.flood,
+    activeDisplayMinute
+  ])
+
+  /*
+   * BUILDINGS
+   */
+  useEffect(() => {
+    buildingEntities.current.forEach(
+      ({
+        entity,
+        asset
+      }) => {
+        entity.show =
+          layers.buildings
+
+        entity.point.color = Color.WHITE
+      }
+    )
+  }, [
+    layers.buildings,
+    frame
+  ])
+
+  /*
+   * ROADS
+   */
+  useEffect(() => {
+    roadEntities.current.forEach(
+      ({
+        entity,
+        asset
+      }) => {
+        entity.show =
+          layers.roads
+
+        entity.point.color = cssColor('#ffd166')
+      }
+    )
+  }, [
+    layers.roads,
+    frame
+  ])
+
+  /*
+   * FACILITIES
+   */
+  useEffect(() => {
+    facilityEntities.current.forEach(
+      ({
+        entity,
+        asset
+      }) => {
+        entity.show =
+          layers.facilities
+
+        entity.point.color = cssColor('#ffc078')
+      }
+    )
+  }, [
+    layers.facilities,
+    frame
+  ])
+
+  /*
+   * ROBUST FLOOD FOCUS
+   */
   const fitFlood =
     useCallback(() => {
       const viewer =
-        viewerRef
-          .current
-          ?.cesiumElement
+        viewerRef.current
 
       if (
         !viewer ||
@@ -633,144 +885,159 @@ export default function MapView() {
         return
       }
 
-      const activeFrame =
+      const current =
         getFloodVisual(
           useDashboard
             .getState()
             .minute
         )
 
-      const bounds =
-        validFloodBounds(
-          activeFrame.ring
+      const points =
+        toGroundPositions(
+          current.ring
         )
 
-      if (!bounds) {
+      if (
+        points.length < 3
+      ) {
         setMapError(
-          'No valid active flood extent to focus. The map remains available.'
+          'No active flood extent to focus.'
         )
 
         return
       }
 
       try {
-        const finiteCartesian =
-          point =>
-            point &&
-            [
-              point.x,
-              point.y,
-              point.z
-            ].every(
-              Number.isFinite
-            )
-
-        const canvas =
-          viewer.scene.canvas
+        const sphere =
+          BoundingSphere.fromPoints(
+            points
+          )
 
         if (
-          !canvas ||
-          canvas.clientWidth <= 0 ||
-          canvas.clientHeight <= 0
+          !sphere ||
+          !Number.isFinite(
+            sphere.radius
+          ) ||
+          sphere.radius <= 0
         ) {
-          return
-        }
-
-        if (
-          !finiteCartesian(
-            viewer.camera.position
+          throw new Error(
+            'Invalid flood bounds'
           )
-        ) {
-          return
-        }
-
-        const values = [
-          bounds.west,
-          bounds.south,
-          bounds.east,
-          bounds.north
-        ]
-
-        if (
-          !values.every(
-            Number.isFinite
-          )
-        ) {
-          setMapError(
-            'Flood focus unavailable. The map remains available.'
-          )
-
-          return
-        }
-
-        if (
-          bounds.west >=
-            bounds.east ||
-          bounds.south >=
-            bounds.north
-        ) {
-          setMapError(
-            'Flood focus unavailable. The map remains available.'
-          )
-
-          return
-        }
-
-        const rectangle =
-          Rectangle.fromDegrees(
-            bounds.west,
-            bounds.south,
-            bounds.east,
-            bounds.north
-          )
-
-        const target =
-          viewer
-            .camera
-            .getRectangleCameraCoordinates(
-              rectangle,
-              new Cartesian3()
-            )
-
-        if (
-          !finiteCartesian(
-            target
-          )
-        ) {
-          setMapError(
-            'Flood focus unavailable. The map remains available.'
-          )
-
-          return
         }
 
         viewer.camera.cancelFlight()
 
-        viewer.camera.setView({
-          destination: target,
-          orientation: {
-            heading: 0,
-            pitch:
-              -Math.PI / 2,
-            roll: 0
-          }
-        })
+        viewer.camera
+          .flyToBoundingSphere(
+            sphere,
+            {
+              duration: 0.8,
+
+              offset:
+                new HeadingPitchRange(
+                  0,
+                  CesiumMath.toRadians(
+                    -70
+                  ),
+                  Math.max(
+                    sphere.radius *
+                      2.2,
+                    5000
+                  )
+                )
+            }
+          )
 
         setMapError('')
-      } catch {
-        setMapError(
-          'Flood focus unavailable. The map remains available.'
-        )
+      } catch (error) {
+        console.error(error)
+
+        /*
+         * Fallback view instead of breaking Emergency Mode.
+         */
+        try {
+          const path =
+            normalizePath(
+              current.ring
+            )
+
+          const averageLon =
+            path.reduce(
+              (
+                total,
+                point
+              ) =>
+                total +
+                point[0],
+              0
+            ) /
+            path.length
+
+          const averageLat =
+            path.reduce(
+              (
+                total,
+                point
+              ) =>
+                total +
+                point[1],
+              0
+            ) /
+            path.length
+
+          viewer.camera.flyTo({
+            destination:
+              Cartesian3.fromDegrees(
+                averageLon,
+                averageLat,
+                22000
+              ),
+
+            orientation: {
+              heading: 0,
+              pitch:
+                CesiumMath.toRadians(
+                  -70
+                ),
+              roll: 0
+            },
+
+            duration: 0.8
+          })
+
+          setMapError('')
+        } catch (fallbackError) {
+          console.error(
+            fallbackError
+          )
+
+          setMapError(
+            'Flood focus unavailable.'
+          )
+        }
       }
     }, [])
 
-
+  /*
+   * EMERGENCY MODE FOCUS
+   */
   useEffect(() => {
     if (
-      ready &&
-      focusRequest
+      !ready ||
+      !focusRequest
     ) {
-      fitFlood()
+      return undefined
+    }
+
+    const handle =
+      requestAnimationFrame(
+        fitFlood
+      )
+
+    return () => {
+      cancelAnimationFrame(
+        handle
+      )
     }
   }, [
     ready,
@@ -778,42 +1045,9 @@ export default function MapView() {
     fitFlood
   ])
 
-
-  useEffect(() => {
-    if (!selected) {
-      return undefined
-    }
-
-    const close = event => {
-      if (
-        event.key === 'Escape'
-      ) {
-        select(null)
-      }
-    }
-
-    window.addEventListener(
-      'keydown',
-      close
-    )
-
-    return () => {
-      window.removeEventListener(
-        'keydown',
-        close
-      )
-    }
-  }, [
-    selected,
-    select
-  ])
-
-
   function recenter() {
     const viewer =
-      viewerRef
-        .current
-        ?.cesiumElement
+      viewerRef.current
 
     if (
       !viewer ||
@@ -823,21 +1057,20 @@ export default function MapView() {
     }
 
     viewer.camera.flyTo({
-      destination,
-      orientation,
-      duration:
-        reduced
-          ? 0
-          : 1.5
+      destination: selectedStudyCase && Number.isFinite(Number(selectedStudyCase.longitude)) && Number.isFinite(Number(selectedStudyCase.latitude))
+        ? Cartesian3.fromDegrees(Number(selectedStudyCase.longitude), Number(selectedStudyCase.latitude), 30000)
+        : viewer.camera.position,
+
+      orientation:
+        INITIAL_ORIENTATION,
+
+      duration: 1
     })
   }
 
-
   function zoom(direction) {
     const viewer =
-      viewerRef
-        .current
-        ?.cesiumElement
+      viewerRef.current
 
     if (
       !viewer ||
@@ -860,397 +1093,47 @@ export default function MapView() {
       return
     }
 
-    camera[
-      direction > 0
-        ? 'zoomIn'
-        : 'zoomOut'
-    ](
+    const amount =
       Math.max(
-        height * 0.3,
+        height * 0.25,
         100
       )
-    )
-  }
 
+    if (direction > 0) {
+      camera.zoomIn(amount)
+    } else {
+      camera.zoomOut(amount)
+    }
+  }
 
   return (
     <div className="map-container">
 
-      <Viewer
-        ref={attachViewer}
-        full
-        animation={false}
-        timeline={false}
-        baseLayerPicker={false}
-        geocoder={false}
-        homeButton={false}
-        sceneModePicker={false}
-        navigationHelpButton={false}
-        fullscreenButton={false}
-        infoBox={false}
-        selectionIndicator={false}
-        shouldAnimate={false}
-      >
-
-        <CameraFlyTo
-          destination={
-            destination
-          }
-          orientation={
-            orientation
-          }
-          duration={
-            reduced
-              ? 0
-              : 2.4
-          }
-          once
-        />
-
-        <Entity
-          name="Hirakud Dam"
-          position={
-            Cartesian3
-              .fromDegrees(
-                83.87,
-                21.53
-              )
-          }
-          point={{
-            pixelSize: 15,
-            color:
-              cssColor(
-                '#60eef2'
-              ),
-            outlineColor:
-              Color.WHITE,
-            outlineWidth: 3,
-            heightReference:
-              HeightReference
-                .CLAMP_TO_GROUND,
-            disableDepthTestDistance:
-              Infinity
-          }}
-          label={{
-            text:
-              'HIRAKUD DAM',
-            font:
-              'bold 13px sans-serif',
-            fillColor:
-              Color.WHITE,
-            style:
-              LabelStyle
-                .FILL_AND_OUTLINE,
-            outlineColor:
-              cssColor(
-                '#102332'
-              ),
-            outlineWidth: 4,
-            pixelOffset:
-              new Cartesian2(
-                0,
-                -28
-              ),
-            heightReference:
-              HeightReference
-                .CLAMP_TO_GROUND,
-            disableDepthTestDistance:
-              Infinity
-          }}
-          onClick={() =>
-            select({
-              type: 'dam',
-              name:
-                'Hirakud Dam'
-            })
-          }
-        />
-
-        <Entity
-          name="Approximate Mahanadi channel"
-          polyline={{
-            positions:
-              riverPositions,
-            width: 4,
-            material:
-              cssColor(
-                '#73e7f0',
-                0.8
-              ),
-            clampToGround:
-              true
-          }}
-        />
-
-        {floodGeometry.map(
-          band => (
-            <Entity
-              key={
-                band.id
-              }
-              id={
-                'prototype-flood-' +
-                band.id
-              }
-              name={
-                'PROTOTYPE SAMPLE DATA · ' +
-                band.label
-              }
-              show={
-                layers.flood
-              }
-              polygon={{
-                hierarchy:
-                  band.positions,
-                material:
-                  cssColor(
-                    band.color,
-                    0.72
-                  ),
-                outline:
-                  false,
-                zIndex:
-                  band.zIndex
-              }}
-              onClick={() =>
-                select({
-                  type:
-                    'flood',
-                  bandId:
-                    band.id
-                })
-              }
-            />
-          )
-        )}
-
-        {floodGeometry.length >
-          0 && (
-          <Entity
-            name="Prototype flood boundary"
-            show={
-              layers.flood
-            }
-            polyline={{
-              positions:
-                floodGeometry[0]
-                  .positions,
-              width: 2,
-              material:
-                cssColor(
-                  depthBands[0]
-                    .color
-                ),
-              clampToGround:
-                true,
-              zIndex: 10
-            }}
-            onClick={() =>
-              select({
-                type:
-                  'flood',
-                bandId:
-                  'shallow'
-              })
-            }
-          />
-        )}
-
-        {sampleBuildings.map(
-          asset => (
-            <Entity
-              key={
-                asset.id
-              }
-              name={
-                asset.name
-              }
-              show={
-                layers.buildings
-              }
-              position={
-                assetPositions
-                  .get(
-                    asset.id
-                  )
-              }
-              point={{
-                pixelSize:
-                  12,
-                color:
-                  cssColor(
-                    assetAffected(
-                      asset,
-                      frame
-                    )
-                      ? '#ff807e'
-                      : '#b6d6d9'
-                  ),
-                outlineColor:
-                  cssColor(
-                    '#112432'
-                  ),
-                outlineWidth:
-                  2,
-                heightReference:
-                  HeightReference
-                    .CLAMP_TO_GROUND,
-                disableDepthTestDistance:
-                  Infinity
-              }}
-              onClick={() =>
-                select(asset)
-              }
-            />
-          )
-        )}
-
-        {sampleRoads.map(
-          asset => (
-            <Entity
-              key={
-                asset.id
-              }
-              name={
-                asset.name
-              }
-              show={
-                layers.roads
-              }
-              polyline={{
-                positions:
-                  roadGeometry
-                    .get(
-                      asset.id
-                    ),
-                width: 6,
-                material:
-                  cssColor(
-                    assetAffected(
-                      asset,
-                      frame
-                    )
-                      ? '#ff807e'
-                      : '#ffc078'
-                  ),
-                clampToGround:
-                  true,
-                zIndex: 20
-              }}
-              onClick={() =>
-                select(asset)
-              }
-            />
-          )
-        )}
-
-        {sampleFacilities.map(
-          asset => (
-            <Entity
-              key={
-                asset.id
-              }
-              name={
-                asset.name
-              }
-              show={
-                layers.facilities
-              }
-              position={
-                assetPositions
-                  .get(
-                    asset.id
-                  )
-              }
-              point={{
-                pixelSize:
-                  16,
-                color:
-                  cssColor(
-                    assetAffected(
-                      asset,
-                      frame
-                    )
-                      ? '#ff807e'
-                      : asset.kind ===
-                          'Shelter'
-                        ? '#59d5ac'
-                        : '#ffc078'
-                  ),
-                outlineColor:
-                  cssColor(
-                    '#112432'
-                  ),
-                outlineWidth:
-                  3,
-                heightReference:
-                  HeightReference
-                    .CLAMP_TO_GROUND,
-                disableDepthTestDistance:
-                  Infinity
-              }}
-              label={{
-                text:
-                  asset.kind,
-                font:
-                  'bold 12px sans-serif',
-                fillColor:
-                  Color.WHITE,
-                style:
-                  LabelStyle
-                    .FILL_AND_OUTLINE,
-                outlineColor:
-                  cssColor(
-                    '#112432'
-                  ),
-                outlineWidth:
-                  3,
-                showBackground:
-                  true,
-                backgroundColor:
-                  cssColor(
-                    '#112432',
-                    0.9
-                  ),
-                pixelOffset:
-                  new Cartesian2(
-                    0,
-                    -24
-                  ),
-                heightReference:
-                  HeightReference
-                    .CLAMP_TO_GROUND,
-                disableDepthTestDistance:
-                  Infinity
-              }}
-              onClick={() =>
-                select(asset)
-              }
-            />
-          )
-        )}
-
-      </Viewer>
-
+      <div
+        ref={containerRef}
+        style={{
+          position: 'absolute',
+          inset: 0
+        }}
+      />
 
       <div className="map-vignette" />
-
 
       <div className="map-heading">
 
         <div className="eyebrow">
-          MAHANADI RIVER BASIN{' '}
+          {selectedStudyCase?.river_name || 'STUDY AREA'} RIVER BASIN{' '}
           <span>
-            ODISHA, INDIA
+            {selectedStudyCase?.state || 'INDIA'}, INDIA
           </span>
         </div>
 
         <h1>
           Eyes on the water.
           <br />
+
           <span>
-            Intelligence for
-            what’s next.
+            Intelligence for what’s next.
           </span>
         </h1>
 
@@ -1263,14 +1146,12 @@ export default function MapView() {
           </span>
 
           <span>
-            PROTOTYPE SAMPLE
-            DATA · not HEC-RAS
+            SYNTHETIC SIMULATION DATA · not hydraulic output
           </span>
 
         </div>
 
       </div>
-
 
       <div
         className="layer-controls glass"
@@ -1289,34 +1170,26 @@ export default function MapView() {
             Icon,
             label
           ]) => (
+
             <button
               key={key}
+
               className={
                 layers[key]
                   ? 'active'
                   : ''
               }
+
               onClick={() =>
-                toggleLayer(
-                  key
-                )
+                toggleLayer(key)
               }
+
               aria-pressed={
                 layers[key]
               }
-              aria-label={
-                'Toggle ' +
-                label
-              }
-              title={
-                'Toggle ' +
-                label
-              }
             >
 
-              <Icon
-                size={16}
-              />
+              <Icon size={16} />
 
               <span>
 
@@ -1325,23 +1198,15 @@ export default function MapView() {
                 <small>
 
                   {counts[key]
-                    ? (
-                        counts[key]
-                          .visible +
-                        ' / ' +
-                        counts[key]
-                          .total +
-                        ' visible'
-                      )
+                    ? `${counts[key].visible} / ${counts[key].total} visible`
+
                     : key ===
-                        'terrain'
-                      ? (
-                          terrainActive
-                            ? 'Ion active'
-                            : layers.terrain
-                              ? 'Ellipsoid fallback'
-                              : 'Ellipsoid'
-                        )
+                      'terrain'
+
+                      ? layers.terrain
+                        ? 'DEM pending'
+                        : 'Terrain off'
+
                       : layers.satellite
                         ? '1 / 1 visible'
                         : '0 / 1 visible'}
@@ -1350,40 +1215,27 @@ export default function MapView() {
 
               </span>
 
-              <i />
-
             </button>
           )
         )}
 
       </div>
 
-
       <div className="map-navigation glass">
 
         <IconButton
-          label="Recenter on Hirakud Dam"
-          onClick={
-            recenter
-          }
+          label="Recenter"
+          onClick={recenter}
         >
-          <Crosshair
-            size={19}
-          />
+          <Crosshair size={19} />
         </IconButton>
 
         <IconButton
-          label="Fit to active flood"
-          onClick={
-            fitFlood
-          }
+          label="Fit active flood"
+          onClick={fitFlood}
         >
-          <Focus
-            size={19}
-          />
+          <Focus size={19} />
         </IconButton>
-
-        <span />
 
         <IconButton
           label="Zoom in"
@@ -1391,9 +1243,7 @@ export default function MapView() {
             zoom(1)
           }
         >
-          <Plus
-            size={19}
-          />
+          <Plus size={19} />
         </IconButton>
 
         <IconButton
@@ -1402,18 +1252,12 @@ export default function MapView() {
             zoom(-1)
           }
         >
-          <Minus
-            size={19}
-          />
+          <Minus size={19} />
         </IconButton>
 
       </div>
 
-
-      <div
-        className="active-frame glass"
-        role="status"
-      >
+      <div className="active-frame glass">
 
         T+
         {frame.minute
@@ -1424,164 +1268,92 @@ export default function MapView() {
           )}
 
         <span>
-          {'0–' +
-            frame.depth
-              .toFixed(1) +
-            ' m'}
-          {' · '}
-          {frame.risk}
+          0–
+          {frame.depth
+            .toFixed(1)}
+          {' '}
+          m · {frame.risk}
         </span>
 
         <small>
-          PROTOTYPE SAMPLE DATA
+          SYNTHETIC SIMULATION DATA
         </small>
 
       </div>
 
-
       {loading && (
         <div className="map-loading">
-
-          <span className="spinner" />
-
-          Loading geospatial
-          view
-
+          Loading geospatial view
         </div>
       )}
 
-
-      {(mapError ||
-        terrainError ||
-        initializationFailed) && (
+      {mapError && (
         <div
           className="map-notice"
           role="status"
         >
-
-          <TriangleAlert
-            size={15}
-          />
-
-          {mapError ||
-            terrainError ||
-            'Cesium is still initializing.'}
-
+          <TriangleAlert size={15} />
+          {mapError}
         </div>
       )}
 
-
       {detail && (
-        <div
-          className="map-popover glass"
-          role="dialog"
-          aria-label="Map feature details"
-        >
+        <div className="map-popover glass">
 
           <IconButton
-            label="Close map details"
+            label="Close"
             onClick={() =>
               select(null)
             }
           >
-            <X
-              size={16}
-            />
+            <X size={16} />
           </IconButton>
 
           <span className="eyebrow">
-            <MapPin
-              size={14}
-            />
+            <MapPin size={14} />
             {' '}
-            PROTOTYPE FEATURE
+            SIMULATION FEATURE
           </span>
 
           <h3>
 
             {detail.type ===
             'flood'
-              ? (
-                  'Flood extent · T+' +
-                  frame.minute +
-                  ' min'
-                )
+              ? `Flood extent · T+${frame.minute.toFixed(1)} min`
               : detail.name}
 
           </h3>
 
           {detail.type ===
-          'dam'
-            ? (
-                <p>
-                  Mahanadi River ·
-                  Odisha
-                  <br />
-                  21.5300° N ·
-                  83.8700° E
-                </p>
-              )
-            : detail.type ===
-                'flood'
-              ? (
-                  <dl>
+          'flood' && (
+            <p>
+              {selectedBand?.label ||
+                'Flood zone'}
 
-                    <div>
-                      <dt>
-                        Selected depth
-                        zone
-                      </dt>
-                      <dd>
-                        {selectedBand
-                          ?.label ||
-                          'No active zone'}
-                      </dd>
-                    </div>
+              {' · '}
 
-                    <div>
-                      <dt>
-                        Prototype risk
-                      </dt>
-                      <dd>
-                        {frame.risk}
-                      </dd>
-                    </div>
+              {frame.risk}
+            </p>
+          )}
 
-                  </dl>
-                )
-              : (
-                  <dl>
+          {detail.type !==
+            'flood' &&
+            detail.type !==
+              'dam' && (
 
-                    <div>
-                      <dt>
-                        Type
-                      </dt>
-                      <dd>
-                        {detail.kind}
-                      </dd>
-                    </div>
-
-                    <div>
-                      <dt>
-                        Threat state
-                      </dt>
-                      <dd>
-                        {threat}
-                      </dd>
-                    </div>
-
-                  </dl>
-                )}
+              <p>
+                {detail.kind}
+                <br />
+                {threat}
+              </p>
+            )}
 
           <small>
-            PROTOTYPE SAMPLE DATA ·
-            not validated hydraulic
-            output.
+            SYNTHETIC SIMULATION DATA · not validated hydraulic output.
           </small>
 
         </div>
       )}
-
 
       <div className="depth-legend glass">
 
@@ -1597,22 +1369,20 @@ export default function MapView() {
             display: 'grid',
             gridTemplateColumns:
               '1fr 1fr',
-            gap: '8px',
+            gap: 8,
             marginTop: 8
           }}
         >
 
           {depthBands.map(
             band => (
+
               <span
-                key={
-                  band.id
-                }
+                key={band.id}
+
                 style={{
-                  display:
-                    'flex',
-                  alignItems:
-                    'center',
+                  display: 'flex',
+                  alignItems: 'center',
                   gap: 5
                 }}
               >
@@ -1623,8 +1393,7 @@ export default function MapView() {
                     height: 12,
                     background:
                       band.color,
-                    borderRadius:
-                      2
+                    borderRadius: 2
                   }}
                 />
 
@@ -1638,51 +1407,24 @@ export default function MapView() {
 
       </div>
 
-
       <div className="coordinate-strip">
 
         <span>
           {coordinates.lat.toFixed(4)}
-          ° N
-          {'  '}
+          ° N{' '}
           {coordinates.lon.toFixed(4)}
           ° E
         </span>
 
         <span>
-          Elevation{' '}
-          {coordinates.elevation ===
-          null
-            ? '—'
-            : (
-                coordinates.elevation
-                  .toFixed(0) +
-                ' m'
-              )}
+          Elevation —
         </span>
 
         <span>
-          {terrainActive
-            ? 'World Terrain'
-            : layers.terrain
-              ? 'Ellipsoid fallback'
-              : 'Ellipsoid terrain'}
+          DEM terrain pending
         </span>
 
       </div>
-
-
-      <span className="sr-only">
-        Token configured:{' '}
-        {String(
-          isTokenConfigured()
-        )}
-        . Terrain mode:{' '}
-        {terrainActive
-          ? 'ion'
-          : 'ellipsoid'}
-        .
-      </span>
 
     </div>
   )

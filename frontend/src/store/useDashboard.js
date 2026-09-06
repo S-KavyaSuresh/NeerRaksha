@@ -4,6 +4,7 @@ import { idleRun, advanceRun } from '../data/pipeline.js'
 
 export const useDashboard = create((set,get) => ({
   minute: 30, playing: false, speed: 1, emergency: false, collapsed: true, selected: null,
+  studyCases: [], selectedStudyCaseId: '', selectedStudyCase: null,
   previousLayers: null, focusRequest: 0,
   scenario:readSavedScenario(),
   run:idleRun(),
@@ -40,5 +41,18 @@ export const useDashboard = create((set,get) => ({
   toggleEmergency: () => set(state => state.emergency ? { emergency:false, layers:state.previousLayers || state.layers, previousLayers:null } : { emergency:true, previousLayers:{...state.layers}, layers:{...state.layers,flood:true,roads:true,facilities:true,buildings:true}, focusRequest:state.focusRequest+1 }),
   focusFlood: () => set(state => ({ focusRequest:state.focusRequest+1 })),
   toggleCollapsed: () => set(state => ({ collapsed: !state.collapsed })),
-  select: selected => set({ selected })
+  select: selected => set({ selected }),
+  setStudyCases: studyCases => set(state => {
+    const selectedStudyCase = studyCases.find(caseItem => caseItem.case_id === state.selectedStudyCaseId) || studyCases[0] || null
+    return { studyCases, selectedStudyCaseId: selectedStudyCase?.case_id || '', selectedStudyCase }
+  }),
+  selectStudyCase: selectedStudyCaseId => set(state => {
+    const selectedStudyCase = state.studyCases.find(caseItem => caseItem.case_id === selectedStudyCaseId)
+    return selectedStudyCase ? { selectedStudyCaseId, selectedStudyCase } : state
+  }),
+  setSelectedStudyCase: selectedStudyCase => set(state => selectedStudyCase ? {
+    selectedStudyCaseId: selectedStudyCase.case_id,
+    selectedStudyCase,
+    studyCases: state.studyCases.map(caseItem => caseItem.case_id === selectedStudyCase.case_id ? { ...caseItem, ...selectedStudyCase } : caseItem)
+  } : state)
 }))

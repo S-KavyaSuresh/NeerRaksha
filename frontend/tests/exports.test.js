@@ -7,7 +7,7 @@ import { getActiveFrame } from '../src/data/prototype.js'
 const now=new Date('2026-09-05T12:00:00Z')
 test('JSON and GeoJSON exports contain the current selection and valid closed geographic rings',()=>{
   const json=JSON.parse(buildExport('json',scenarioPresets.major,30,now).content)
-  assert.equal(json.metadata.application,'JalDrishti')
+  assert.equal(json.metadata.application,'NeerRaksha')
   assert.equal(json.metadata.active_timeline_frame,30)
   assert.equal(json.metadata.scenario_name,'Major Breach')
   assert.equal(json.metadata.generation_timestamp,now.toISOString())
@@ -29,7 +29,7 @@ test('CSV is quoted and spreadsheet formula names are escaped',()=>{
   assert.equal(output.split('\r\n').length,5)
   assert.ok(output.includes('"\'=SUM(1,2)"'))
   assert.match(output,/active_timeline_frame/)
-  assert.match(output,/PROTOTYPE SAMPLE DATA/)
+  assert.match(output,/SYNTHETIC SIMULATION DATA/)
 })
 
 test('KML escapes scenario names and omits geometry at T+00',()=>{

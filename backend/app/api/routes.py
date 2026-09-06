@@ -6,6 +6,7 @@ from app.database.session import get_session
 from app.models import Dam, Scenario, SimulationRun, ImpactSummary
 from app.schemas.responses import DamOut, ScenarioOut, SimulationOut, ImpactOut, TimelineOut
 from app.services.sample import SIMULATION_ID, TIMELINE
+from app.data.repository import repository
 
 router = APIRouter(prefix="/api")
 
@@ -19,7 +20,28 @@ def require_record(session, model, identifier):
 
 @router.get("/health")
 def health():
-    return {"status": "ok", "service": "JalDrishti", "milestone": 1}
+    return {"status": "ok", "service": "NeerRaksha"}
+
+
+@router.get("/study-cases")
+def study_cases():
+    return repository.list_study_cases()
+
+
+@router.get("/study-cases/{case_id}")
+def study_case(case_id: str):
+    case = repository.get_study_case(case_id)
+    if case is None:
+        raise HTTPException(404, detail={"code": "STUDY_CASE_NOT_FOUND", "message": "The requested study case does not exist."})
+    return case
+
+
+@router.get("/study-cases/{case_id}/validation")
+def study_case_validation(case_id: str):
+    validation = repository.validation(case_id)
+    if validation is None:
+        raise HTTPException(404, detail={"code": "STUDY_CASE_NOT_FOUND", "message": "The requested study case does not exist."})
+    return validation
 
 
 @router.get("/database/health")

@@ -9,14 +9,14 @@ const csv = value => {
 }
 
 export function buildExport(format,scenario,minute,now=new Date()) {
-  if(Object.keys(validateScenario(scenario)).length) throw new Error('Save a valid prototype scenario before exporting.')
+  if(Object.keys(validateScenario(scenario)).length) throw new Error('Save a valid scenario before exporting.')
   if(!Number.isFinite(Number(minute))||Number(minute)<0||Number(minute)>60) throw new Error('Select a timeline position from 0 to 60 minutes.')
   const frame=getActiveFrame(minute)
   if(frame.ring.some(point=>point.length!==2||!Number.isFinite(point[0])||!Number.isFinite(point[1])||Math.abs(point[0])>180||Math.abs(point[1])>90)) throw new Error('Sample geometry contains invalid geographic coordinates.')
-  const metadata={application:'JalDrishti',data_classification:'PROTOTYPE SAMPLE DATA',scenario_name:scenario.name.trim(),active_timeline_frame:frame.minute,timeline_minute:Number(minute),generation_timestamp:now.toISOString(),validation_status:'Not validated hydraulic output',data_source:'Prototype simulation intelligence',geometry_basis:'Prebuilt illustrative flood states; not HEC-RAS output'}
+  const metadata={application:'NeerRaksha',data_classification:'SYNTHETIC SIMULATION DATA',scenario_name:scenario.name.trim(),active_timeline_frame:frame.minute,timeline_minute:Number(minute),generation_timestamp:now.toISOString(),validation_status:'Not validated hydraulic output',data_source:'Synthetic simulation intelligence',geometry_basis:'Prebuilt illustrative flood states; not HEC-RAS output'}
   const feature={type:'Feature',properties:{...metadata,sample_depth_m:frame.depth,prototype_risk:frame.risk},geometry:{type:'Polygon',coordinates:[frame.ring]}}
   const geojson={type:'FeatureCollection',metadata,features:frame.ring.length?[feature]:[]}
-  const name='jaldrishti-prototype-T'+String(frame.minute).padStart(2,'0')
+  const name='neerraksha-simulation-T'+String(frame.minute).padStart(2,'0')
   if(format==='json') return {name:name+'.json',type:'application/json',content:JSON.stringify({metadata,scenario:normalizedScenario(scenario),impact:prototypeImpact(minute),active_extent:geojson},null,2)}
   if(format==='geojson') return {name:name+'.geojson',type:'application/geo+json',content:JSON.stringify(geojson,null,2)}
   if(format==='csv') {

@@ -6,7 +6,7 @@ from app.api.routes import router
 from app.core.config import settings
 from app.database.session import DatabaseUnavailable
 
-app = FastAPI(title="JalDrishti API", version="0.1.0", description="Milestone 1. All simulation results are hypothetical sample data.")
+app = FastAPI(title="NeerRaksha API", version="0.1.0", description="Dam-break and flood intelligence API. All simulation results are synthetic data.")
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False, allow_methods=["GET"], allow_headers=["Accept", "Content-Type"])
 app.include_router(router)
 
