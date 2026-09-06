@@ -1,0 +1,311 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 5151087169,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Sub District Hospital, Indapur",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.0258983,
+          18.1206808
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 5151087170,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Raut Hospital",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.0248402,
+          18.1209854
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 5151087171,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "ITI COLLEGE INDAPUR",
+        "amenity": "college"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.0298679,
+          18.1200229
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7044537482,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Yashodeep Hospital",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.0251131,
+          18.1205606
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7052228573,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Dr. Kardile Accident and General Hospital",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.0256002,
+          18.112179
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7073537756,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Magar Accident and Eye Hospital.",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.0242172,
+          18.1209749
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7073895615,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Sushrut Hospital, Indapur",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.0269477,
+          18.1150122
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7087209703,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Ojas Ent and Dental Clinic",
+        "amenity": "clinic"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.0257917,
+          18.1210564
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7637727951,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Jayashree Nursing Home",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.193101,
+          18.033998
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7637727976,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Trimurti Hospital",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.2079036,
+          18.0297521
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7637728047,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Patil Hospital",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.1897936,
+          18.0307174
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7637728062,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Krishna Hospital",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.1943213,
+          18.0278011
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7637728065,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Dr. Chopade Hospital",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.1954566,
+          18.0282261
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 7637728067,
+        "osm_type": "node",
+        "source": "OpenStreetMap",
+        "name": "Geeta Hospital",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.273947,
+          18.172232
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 244262807,
+        "osm_type": "way",
+        "source": "OpenStreetMap",
+        "name": "Shri Uttareshwar High School",
+        "amenity": "school"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.2748252,
+          18.1757482
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 1252793190,
+        "osm_type": "way",
+        "source": "OpenStreetMap",
+        "name": "Shree Ganesh Vidyalay",
+        "amenity": "school"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.2855854,
+          18.048758
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 1252796859,
+        "osm_type": "way",
+        "source": "OpenStreetMap",
+        "name": "Zilha Parishad Shala Pimpalner.",
+        "amenity": "school"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.2863741,
+          18.047861
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "osm_id": 1252834211,
+        "osm_type": "way",
+        "source": "OpenStreetMap",
+        "name": "Primary Health Center",
+        "amenity": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          75.2860381,
+          18.0495821
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+check,status,detail
+DEM opens,PASS,2334x800 @ 30.0 m
+Corrected dam anchor inside DEM,PASS,"18.075000,75.120278"
+Reservoir geometry,PASS,1 features
+River centerline,PASS,1 features
+Buildings,PASS,120 features
+Roads,PASS,6 features
+Facilities,PASS,15 features
+FRL corrected,PASS,496.83 m
+Maximum water level separated from FRL,PASS,497.58 m
+Dam length corrected,PASS,1626 m
+Gross storage corrected,PASS,3320010000 m3

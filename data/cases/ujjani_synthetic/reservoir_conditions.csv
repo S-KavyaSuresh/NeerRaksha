@@ -1,0 +1,2 @@
+case_id,initial_water_level_m,gross_storage_m3,live_storage_m3,dead_storage_m3,initial_storage_assumption_m3,condition,provenance
+UJJANI_SYNTH_01,496.83,3320010000.0,1583000000.0,1790000000.0,3320010000.0,FRL baseline,KML-anchored FRL/gross storage; synthetic initial-condition assumption

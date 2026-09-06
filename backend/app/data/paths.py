@@ -16,6 +16,8 @@ CSV_FILES = {
     "assets": DATA_ROOT / "exposure" / "India_Roads_Buildings_Exposed_Assets_700.csv",
 }
 DEM_ROOT = DATA_ROOT / "dem"
+UJJANI_ROOT = DATA_ROOT / "cases" / "ujjani_synthetic"
+UJJANI_REAL_ROOT = DATA_ROOT / "cases" / "ujjani_real"
 
 
 def discover_dem_files() -> list[Path]:

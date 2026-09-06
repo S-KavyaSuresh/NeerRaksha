@@ -1,0 +1,60 @@
+{
+  "case_id": "UJJANI_SYNTH_01",
+  "name": "Ujjani Dam / Bhima River synthetic hydraulic case",
+  "data_classification": "HYBRID: real anchor attributes + synthetic spatial/hydraulic inputs",
+  "dam_anchor": {
+    "latitude": 18.075,
+    "longitude": 75.120278,
+    "height_m": 56.4,
+    "length_m": 1626.0,
+    "frl_m": 496.83,
+    "maximum_water_level_m": 497.58,
+    "gross_storage_m3": 3320010000.0,
+    "live_storage_m3": 1583000000.0,
+    "dead_storage_m3": 1790000000.0,
+    "spillway_capacity_m3s": 18010.0,
+    "river": "Bhima",
+    "basin": "Krishna",
+    "district": "Solapur",
+    "state": "Maharashtra",
+    "completion_year": 1980,
+    "dam_type": "ZONED EARTHEN DAM",
+    "source_note": "Corrected to project-supplied KML dam record"
+  },
+  "synthetic_assumptions": {
+    "dam_crest_elevation_m": 503.5,
+    "riverbed_at_dam_m": 442.5,
+    "downstream_reach_km": 50,
+    "dem_resolution_m": 30.0,
+    "domain_width_km": 24,
+    "downstream_slope": 0.0006,
+    "baseline_breach_width_m": 120,
+    "baseline_breach_formation_time_min": 30,
+    "channel_manning_n": 0.035,
+    "floodplain_manning_n": 0.05,
+    "urban_manning_n": 0.08,
+    "simulation_duration_h": 6,
+    "output_interval_min": 5
+  },
+  "dem": {
+    "crs": "EPSG:32643",
+    "width": 2334,
+    "height": 800,
+    "resolution_m": 30.0,
+    "bounds_projected": [
+      497727.55828714883,
+      1986487.4277843346,
+      567747.5582871488,
+      2010487.4277843346
+    ],
+    "elevation_min_m": 408.5205078125,
+    "elevation_max_m": 563.8695678710938
+  },
+  "observed_reference": {
+    "rows": 4026,
+    "nonzero_rows": 1162,
+    "max_total_gate_discharge_m3s": 3539.0394870681603,
+    "source_filename": "reservior_discharge_tel_hr_maharashtra_sw_mh_ujjani_dam_1_2021_2025.csv"
+  },
+  "warning": "Synthetic hydraulic/geospatial test case anchored to corrected KML dam metadata. Not for real flood forecasting, emergency response, or engineering decisions."
+}

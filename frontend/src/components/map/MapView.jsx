@@ -43,9 +43,6 @@ import {
 } from 'lucide-react'
 
 import { useDashboard } from '../../store/useDashboard'
-import {
-  assetAffected
-} from '../../data/prototype.js'
 
 import IconButton from '../common/IconButton'
 
@@ -54,11 +51,13 @@ import {
   depthBands
 } from './floodVisual.js'
 
+
 const INITIAL_ORIENTATION = {
   heading: 0,
   pitch: CesiumMath.toRadians(-58),
   roll: 0
 }
+
 
 const layerOptions = [
   ['terrain', Mountain, 'Terrain'],
@@ -69,20 +68,26 @@ const layerOptions = [
   ['facilities', Hospital, 'Facilities']
 ]
 
+
 const PRECOMPUTED_MINUTES = Array.from(
   { length: 60 },
   (_, index) => index + 1
 )
 
+
 function cssColor(value, alpha = 1) {
-  return Color.fromCssColorString(value).withAlpha(alpha)
+  return Color
+    .fromCssColorString(value)
+    .withAlpha(alpha)
 }
+
 
 function colorMaterial(value, alpha = 1) {
   return new ColorMaterialProperty(
     cssColor(value, alpha)
   )
 }
+
 
 function normalizePath(points) {
   if (!Array.isArray(points)) {
@@ -123,10 +128,14 @@ function normalizePath(points) {
         const lon = Number(point[0])
         const lat = Number(point[1])
 
-        return Number.isFinite(lon) &&
+        if (
+          Number.isFinite(lon) &&
           Number.isFinite(lat)
-          ? [lon, lat]
-          : null
+        ) {
+          return [lon, lat]
+        }
+
+        return null
       }
 
       if (
@@ -144,10 +153,14 @@ function normalizePath(points) {
           point.latitude
         )
 
-        return Number.isFinite(lon) &&
+        if (
+          Number.isFinite(lon) &&
           Number.isFinite(lat)
-          ? [lon, lat]
-          : null
+        ) {
+          return [lon, lat]
+        }
+
+        return null
       }
 
       return null
@@ -155,45 +168,58 @@ function normalizePath(points) {
     .filter(Boolean)
 }
 
+
 function toPolylinePositions(
   points,
   height = 80
 ) {
   const path = normalizePath(points)
+
+  if (path.length < 2) {
+    return []
+  }
+
   const values = []
 
   path.forEach(([lon, lat]) => {
-    values.push(lon, lat, height)
+    values.push(
+      lon,
+      lat,
+      height
+    )
   })
-
-  if (values.length < 6) {
-    return []
-  }
 
   return Cartesian3.fromDegreesArrayHeights(
     values
   )
 }
+
 
 function toPolygonPositions(
   ring,
   height = 20
 ) {
   const path = normalizePath(ring)
+
+  if (path.length < 3) {
+    return []
+  }
+
   const values = []
 
   path.forEach(([lon, lat]) => {
-    values.push(lon, lat, height)
+    values.push(
+      lon,
+      lat,
+      height
+    )
   })
-
-  if (values.length < 9) {
-    return []
-  }
 
   return Cartesian3.fromDegreesArrayHeights(
     values
   )
 }
+
 
 function toGroundPositions(ring) {
   const path = normalizePath(ring)
@@ -205,11 +231,17 @@ function toGroundPositions(ring) {
   const values = []
 
   path.forEach(([lon, lat]) => {
-    values.push(lon, lat)
+    values.push(
+      lon,
+      lat
+    )
   })
 
-  return Cartesian3.fromDegreesArray(values)
+  return Cartesian3.fromDegreesArray(
+    values
+  )
 }
+
 
 function displayMinuteFor(value) {
   const minute = Number(value)
@@ -230,6 +262,184 @@ function displayMinuteFor(value) {
   )
 }
 
+
+/*
+ * Creates the temporary synthetic Ujjani inundation corridor.
+ *
+ * IMPORTANT:
+ * This is only a visualization derived from the supplied synthetic
+ * river + breach hydrograph.
+ *
+ * It is NOT HEC-RAS / Delft3D / SPH hydraulic output.
+ */
+function buildUjjaniFloodRing(
+  studyCase,
+  minute
+) {
+  if (
+    !studyCase ||
+    studyCase.case_id !== 'ujjani'
+  ) {
+    return []
+  }
+
+  const currentMinute = Number(minute)
+
+  if (
+    !Number.isFinite(currentMinute) ||
+    currentMinute <= 0
+  ) {
+    return []
+  }
+
+  const line =
+    studyCase
+      ?.spatial
+      ?.river_centerline
+      ?.features
+      ?.[0]
+      ?.geometry
+      ?.coordinates
+
+  const path = normalizePath(line)
+
+  if (path.length < 2) {
+    return []
+  }
+
+  const timeline =
+    Array.isArray(studyCase.timeline)
+      ? studyCase.timeline
+      : []
+
+  let row = null
+
+  if (timeline.length > 0) {
+    row = timeline.reduce(
+      (best, item) => {
+        if (!best) {
+          return item
+        }
+
+        const itemTime =
+          Number(item.time_min)
+
+        const bestTime =
+          Number(best.time_min)
+
+        if (!Number.isFinite(itemTime)) {
+          return best
+        }
+
+        if (!Number.isFinite(bestTime)) {
+          return item
+        }
+
+        return Math.abs(
+          itemTime -
+          currentMinute
+        ) <
+        Math.abs(
+          bestTime -
+          currentMinute
+        )
+          ? item
+          : best
+      },
+      null
+    )
+  }
+
+  const progress = Math.max(
+    0,
+    Math.min(
+      1,
+      currentMinute / 60
+    )
+  )
+
+  const count = Math.max(
+    2,
+    Math.min(
+      path.length,
+      Math.ceil(
+        path.length *
+        progress
+      )
+    )
+  )
+
+  const part = path.slice(
+    0,
+    count
+  )
+
+  /*
+   * CRITICAL GUARD.
+   *
+   * The previous code crashed here because it attempted:
+   *
+   * part[0][0]
+   *
+   * while part was empty.
+   */
+  if (part.length < 2) {
+    return []
+  }
+
+  const discharge =
+    Number(
+      row?.breach_discharge_m3s
+    ) || 0
+
+  const normalizedDischarge =
+    Math.max(
+      0,
+      Math.min(
+        1,
+        discharge / 18010
+      )
+    )
+
+  const width =
+    0.002 +
+    normalizedDischarge *
+    0.014
+
+  const left = part.map(
+    ([lon, lat]) => [
+      lon - width,
+      lat
+    ]
+  )
+
+  const right = part
+    .slice()
+    .reverse()
+    .map(
+      ([lon, lat]) => [
+        lon + width,
+        lat
+      ]
+    )
+
+  if (
+    left.length < 2 ||
+    right.length < 2
+  ) {
+    return []
+  }
+
+  const ring = [
+    ...left,
+    ...right,
+    left[0]
+  ]
+
+  return ring
+}
+
+
 export default function MapView() {
   const containerRef = useRef(null)
   const viewerRef = useRef(null)
@@ -239,27 +449,35 @@ export default function MapView() {
     streets: null
   })
 
-  const buildingEntities = useRef([])
-  const roadEntities = useRef([])
-  const facilityEntities = useRef([])
-  const studyEntities = useRef([])
+  const buildingEntities =
+    useRef([])
+
+  const roadEntities =
+    useRef([])
+
+  const facilityEntities =
+    useRef([])
+
+  const studyEntities =
+    useRef([])
+
+  const ujjaniFloodRef =
+    useRef(null)
 
   /*
-   * Flood entities are PRECOMPUTED.
+   * Old prototype flood frames are preserved for legacy cases.
    *
-   * Structure:
-   * Map<minute, Array<{ entity, bandId }>>
-   *
-   * We never mutate polygon geometry during playback.
-   * We only change entity.show.
+   * Ujjani does NOT use these frames.
    */
-  const floodFramesRef = useRef(
-    new Map()
-  )
+  const floodFramesRef =
+    useRef(
+      new Map()
+    )
 
-  const metadata = useRef(
-    new Map()
-  )
+  const metadata =
+    useRef(
+      new Map()
+    )
 
   const [
     ready,
@@ -280,8 +498,8 @@ export default function MapView() {
     coordinates,
     setCoordinates
   ] = useState({
-    lon: 83.87,
-    lat: 21.53
+    lon: 75.120278,
+    lat: 18.075
   })
 
   const {
@@ -294,10 +512,12 @@ export default function MapView() {
     selectedStudyCase
   } = useDashboard()
 
+
   const visualMinute =
     Math.round(
-      minute * 4
+      Number(minute || 0) * 4
     ) / 4
+
 
   const frame = useMemo(
     () =>
@@ -307,17 +527,125 @@ export default function MapView() {
     [visualMinute]
   )
 
+
   const activeDisplayMinute =
     displayMinuteFor(
       visualMinute
     )
 
-  const counts = useMemo(() => ({
-    buildings: { total: selectedStudyCase?.exposure?.buildings?.length || 0, visible: layers.buildings ? selectedStudyCase?.exposure?.buildings?.length || 0 : 0 },
-    roads: { total: selectedStudyCase?.exposure?.roads?.length || 0, visible: layers.roads ? selectedStudyCase?.exposure?.roads?.length || 0 : 0 },
-    facilities: { total: selectedStudyCase?.exposure?.facilities?.length || 0, visible: layers.facilities ? selectedStudyCase?.exposure?.facilities?.length || 0 : 0 },
-    flood: { total: frame.ring.length ? 1 : 0, visible: layers.flood ? 1 : 0 }
-  }), [selectedStudyCase, layers, frame.ring.length])
+
+  const ujjaniFloodRing =
+    useMemo(
+      () =>
+        buildUjjaniFloodRing(
+          selectedStudyCase,
+          visualMinute
+        ),
+      [
+        selectedStudyCase,
+        visualMinute
+      ]
+    )
+
+
+  const counts =
+    useMemo(() => {
+      const buildingTotal =
+        selectedStudyCase?.case_id === 'ujjani'
+          ? 0
+          : selectedStudyCase
+          ?.spatial
+          ?.buildings
+          ?.features
+          ?.length ??
+        selectedStudyCase
+          ?.exposure
+          ?.buildings
+          ?.length ??
+        0
+
+      const roadTotal =
+        selectedStudyCase
+          ?.spatial
+          ?.real_roads
+          ?.features
+          ?.length ??
+        selectedStudyCase
+          ?.exposure
+          ?.roads
+          ?.length ??
+        0
+
+      const facilityTotal =
+        selectedStudyCase
+          ?.spatial
+          ?.real_facilities
+          ?.features
+          ?.length ??
+        selectedStudyCase
+          ?.exposure
+          ?.facilities
+          ?.length ??
+        0
+
+      const floodAvailable =
+        selectedStudyCase
+          ?.case_id ===
+        'ujjani'
+          ? false
+          : frame.ring.length >= 4
+
+      return {
+        buildings: {
+          total:
+            buildingTotal,
+
+          visible:
+            layers.buildings
+              ? buildingTotal
+              : 0
+        },
+
+        roads: {
+          total:
+            roadTotal,
+
+          visible:
+            layers.roads
+              ? roadTotal
+              : 0
+        },
+
+        facilities: {
+          total:
+            facilityTotal,
+
+          visible:
+            layers.facilities
+              ? facilityTotal
+              : 0
+        },
+
+        flood: {
+          total:
+            floodAvailable
+              ? 1
+              : 0,
+
+          visible:
+            layers.flood &&
+            floodAvailable
+              ? 1
+              : 0
+        }
+      }
+    }, [
+      selectedStudyCase,
+      layers,
+      frame.ring.length,
+      ujjaniFloodRing.length
+    ])
+
 
   const selectedBand =
     frame.bands.find(
@@ -325,6 +653,7 @@ export default function MapView() {
         band.id ===
         selected?.bandId
     )
+
 
   const detail =
     selected?.type ===
@@ -335,24 +664,11 @@ export default function MapView() {
         }
       : selected
 
-  const threat =
-    detail &&
-    ![
-      'dam',
-      'flood'
-    ].includes(detail.type)
-      ? assetAffected(
-          detail,
-          frame
-        )
-        ? detail.type === 'road'
-          ? 'Blocked (sample)'
-          : 'Flooded (sample)'
-        : 'Outside current flood'
-      : null
 
   /*
-   * CREATE CESIUM ONCE
+   * ----------------------------------------------------------
+   * CREATE CESIUM VIEWER ONCE
+   * ----------------------------------------------------------
    */
   useEffect(() => {
     if (!containerRef.current) {
@@ -370,9 +686,6 @@ export default function MapView() {
             animation: false,
             timeline: false,
 
-            /*
-             * Prevent default Cesium Ion imagery.
-             */
             baseLayer: false,
             baseLayerPicker: false,
 
@@ -388,22 +701,23 @@ export default function MapView() {
             infoBox: false,
             selectionIndicator:
               false,
+
             shouldAnimate: false,
 
-            /*
-             * Always render after state changes.
-             * This avoids stale frames without needing
-             * aggressive requestRender calls.
-             */
             requestRenderMode: false
           }
         )
 
+
       viewerRef.current =
         viewer
 
+
       viewer.scene.globe.baseColor =
-        cssColor('#172d39')
+        cssColor(
+          '#172d39'
+        )
+
 
       /*
        * BASEMAPS
@@ -414,14 +728,18 @@ export default function MapView() {
             'https://tile.openstreetmap.org/'
         })
 
+
       const satelliteProvider =
         new UrlTemplateImageryProvider({
           url:
             'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+
           maximumLevel: 18,
+
           credit:
             'Tiles © Esri'
         })
+
 
       const streets =
         viewer.imageryLayers
@@ -429,16 +747,19 @@ export default function MapView() {
             streetsProvider
           )
 
+
       const satellite =
         viewer.imageryLayers
           .addImageryProvider(
             satelliteProvider
           )
 
+
       imageryRef.current = {
         satellite,
         streets
       }
+
 
       const satelliteEnabled =
         useDashboard
@@ -446,19 +767,18 @@ export default function MapView() {
           .layers
           .satellite
 
+
       satellite.show =
         satelliteEnabled
 
       streets.show =
         !satelliteEnabled
 
+
       /*
-       * PRECOMPUTE ALL 60 FLOOD FRAMES
+       * LEGACY / NON-UJJANI PROTOTYPE FLOOD FRAMES
        *
-       * This is the important anti-blink fix.
-       *
-       * Cesium does not have to rebuild PolygonGraphics
-       * while Play is running.
+       * These are hidden completely whenever Ujjani is active.
        */
       PRECOMPUTED_MINUTES.forEach(
         frameMinute => {
@@ -478,12 +798,14 @@ export default function MapView() {
                 toPolygonPositions(
                   band.ring,
                   20 +
-                    index * 10
+                  index * 10
                 )
 
               if (
-                positions.length <
-                3
+                !Array.isArray(
+                  positions
+                ) ||
+                positions.length < 3
               ) {
                 return
               }
@@ -518,20 +840,27 @@ export default function MapView() {
                   }
                 })
 
+
               metadata.current.set(
                 entity.id,
                 {
-                  type: 'flood',
-                  bandId: band.id
+                  type:
+                    'flood',
+
+                  bandId:
+                    band.id
                 }
               )
 
+
               entities.push({
                 entity,
-                bandId: band.id
+                bandId:
+                  band.id
               })
             }
           )
+
 
           floodFramesRef.current.set(
             frameMinute,
@@ -540,6 +869,7 @@ export default function MapView() {
         }
       )
 
+
       /*
        * FEATURE PICKING
        */
@@ -547,6 +877,7 @@ export default function MapView() {
         new ScreenSpaceEventHandler(
           viewer.scene.canvas
         )
+
 
       handler.setInputAction(
         movement => {
@@ -573,12 +904,14 @@ export default function MapView() {
               .select(item)
           }
         },
+
         ScreenSpaceEventType
           .LEFT_CLICK
       )
 
+
       /*
-       * COORDINATES
+       * MOUSE COORDINATES
        */
       handler.setInputAction(
         movement => {
@@ -603,9 +936,11 @@ export default function MapView() {
           }
 
           const cartographic =
-            Cartographic.fromCartesian(
-              position
-            )
+            Cartographic
+              .fromCartesian(
+                position
+              )
+
 
           setCoordinates({
             lon:
@@ -619,15 +954,20 @@ export default function MapView() {
               )
           })
         },
+
         ScreenSpaceEventType
           .MOUSE_MOVE
       )
+
 
       setLoading(false)
       setReady(true)
 
     } catch (error) {
-      console.error(error)
+      console.error(
+        'Cesium initialization error:',
+        error
+      )
 
       setMapError(
         '3D map initialization failed.'
@@ -635,6 +975,7 @@ export default function MapView() {
 
       setLoading(false)
     }
+
 
     return () => {
       if (
@@ -644,8 +985,13 @@ export default function MapView() {
         handler.destroy()
       }
 
+
       metadata.current.clear()
-      floodFramesRef.current.clear()
+
+      floodFramesRef
+        .current
+        .clear()
+
 
       buildingEntities.current =
         []
@@ -656,12 +1002,15 @@ export default function MapView() {
       facilityEntities.current =
         []
 
-      studyEntities.current = []
+      studyEntities.current =
+        []
+
 
       imageryRef.current = {
         satellite: null,
         streets: null
       }
+
 
       if (
         viewer &&
@@ -670,68 +1019,1237 @@ export default function MapView() {
         viewer.destroy()
       }
 
+
       viewerRef.current =
         null
     }
   }, [])
 
-  /* Update only case-owned entities and camera; the Cesium Viewer stays mounted. */
-  useEffect(() => {
-    const viewer = viewerRef.current
-    if (!ready || !viewer || viewer.isDestroyed() || !selectedStudyCase) return
-    const longitude = Number(selectedStudyCase.longitude)
-    const latitude = Number(selectedStudyCase.latitude)
-    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return
-
-    studyEntities.current.forEach(entity => {
-      metadata.current.delete(entity.id)
-      viewer.entities.remove(entity)
-    })
-    studyEntities.current = []
-    buildingEntities.current = []
-    roadEntities.current = []
-    facilityEntities.current = []
-
-    const addPoint = (asset, type, color, size) => {
-      const assetLongitude = Number(asset.longitude)
-      const assetLatitude = Number(asset.latitude)
-      if (!Number.isFinite(assetLongitude) || !Number.isFinite(assetLatitude)) return null
-      const entity = viewer.entities.add({
-        id: `${type}-${selectedStudyCase.case_id}-${asset.id}`,
-        name: asset.name || asset.asset_type || type,
-        show: layers[type === 'building' ? 'buildings' : `${type}s`],
-        position: Cartesian3.fromDegrees(assetLongitude, assetLatitude, 180),
-        point: { pixelSize: size, color, outlineColor: Color.WHITE, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY }
-      })
-      const item = { ...asset, type, kind: asset.asset_type || type, lon: assetLongitude, lat: assetLatitude }
-      metadata.current.set(entity.id, item)
-      studyEntities.current.push(entity)
-      return { entity, asset: item }
-    }
-
-    const dam = viewer.entities.add({
-      id: `dam-${selectedStudyCase.case_id}`,
-      name: selectedStudyCase.dam_name,
-      position: Cartesian3.fromDegrees(longitude, latitude, 180),
-      point: { pixelSize: 18, color: cssColor('#60eef2'), outlineColor: Color.WHITE, outlineWidth: 3, disableDepthTestDistance: Number.POSITIVE_INFINITY },
-      label: { text: `${selectedStudyCase.dam_name} DAM`.toUpperCase(), font: 'bold 13px sans-serif', fillColor: Color.WHITE, style: LabelStyle.FILL_AND_OUTLINE, outlineColor: cssColor('#102332'), outlineWidth: 4, pixelOffset: new Cartesian2(0, -28), disableDepthTestDistance: Number.POSITIVE_INFINITY }
-    })
-    metadata.current.set(dam.id, { type: 'dam', name: selectedStudyCase.dam_name })
-    studyEntities.current.push(dam)
-    buildingEntities.current = (selectedStudyCase.exposure?.buildings || []).map(asset => addPoint(asset, 'building', Color.WHITE, 14)).filter(Boolean)
-    roadEntities.current = (selectedStudyCase.exposure?.roads || []).map(asset => addPoint(asset, 'road', cssColor('#ffd166'), 13)).filter(Boolean)
-    facilityEntities.current = (selectedStudyCase.exposure?.facilities || []).map(asset => addPoint(asset, 'facility', cssColor('#ffc078'), 16)).filter(Boolean)
-    viewer.camera.flyTo({ destination: Cartesian3.fromDegrees(longitude, latitude, 30000), orientation: INITIAL_ORIENTATION, duration: 0.8 })
-  }, [ready, selectedStudyCase])
 
   /*
-   * SATELLITE / OSM
+   * ----------------------------------------------------------
+   * CREATE / RECREATE CASE-OWNED ENTITIES ONLY WHEN CASE CHANGES
+   * ----------------------------------------------------------
+   *
+   * Viewer itself stays alive.
+   */
+  useEffect(() => {
+    const viewer =
+      viewerRef.current
+
+
+    if (
+      !ready ||
+      !viewer ||
+      viewer.isDestroyed() ||
+      !selectedStudyCase
+    ) {
+      return
+    }
+
+
+    const longitude =
+      Number(
+        selectedStudyCase.longitude
+      )
+
+    const latitude =
+      Number(
+        selectedStudyCase.latitude
+      )
+
+
+    if (
+      !Number.isFinite(longitude) ||
+      !Number.isFinite(latitude)
+    ) {
+      console.error(
+        'Invalid study-case coordinates',
+        selectedStudyCase
+      )
+
+      return
+    }
+
+
+    /*
+     * Remove ONLY the previous case entities.
+     */
+    studyEntities.current.forEach(
+      entity => {
+        if (!entity) {
+          return
+        }
+
+        metadata.current.delete(
+          entity.id
+        )
+
+        try {
+          viewer.entities.remove(
+            entity
+          )
+        } catch (error) {
+          console.warn(
+            'Failed to remove entity:',
+            entity?.id,
+            error
+          )
+        }
+      }
+    )
+
+
+    studyEntities.current =
+      []
+
+    buildingEntities.current =
+      []
+
+    roadEntities.current =
+      []
+
+    facilityEntities.current =
+      []
+
+    ujjaniFloodRef.current =
+      null
+
+
+    /*
+     * Helper for legacy point-based assets.
+     */
+    const addPoint = (
+      asset,
+      type,
+      color,
+      size
+    ) => {
+      const assetLongitude =
+        Number(
+          asset.longitude
+        )
+
+      const assetLatitude =
+        Number(
+          asset.latitude
+        )
+
+      if (
+        !Number.isFinite(
+          assetLongitude
+        ) ||
+        !Number.isFinite(
+          assetLatitude
+        )
+      ) {
+        return null
+      }
+
+
+      const layerKey =
+        type === 'building'
+          ? 'buildings'
+          : type === 'road'
+            ? 'roads'
+            : 'facilities'
+
+
+      const entity =
+        viewer.entities.add({
+          id:
+            `${type}-${selectedStudyCase.case_id}-${asset.id}`,
+
+          name:
+            asset.name ||
+            asset.asset_type ||
+            type,
+
+          show:
+            Boolean(
+              layers[layerKey]
+            ),
+
+          position:
+            Cartesian3.fromDegrees(
+              assetLongitude,
+              assetLatitude,
+              180
+            ),
+
+          point: {
+            pixelSize:
+              size,
+
+            color,
+
+            outlineColor:
+              Color.WHITE,
+
+            outlineWidth:
+              2,
+
+            disableDepthTestDistance:
+              Number
+                .POSITIVE_INFINITY
+          }
+        })
+
+
+      const item = {
+        ...asset,
+
+        type,
+
+        kind:
+          asset.asset_type ||
+          type,
+
+        lon:
+          assetLongitude,
+
+        lat:
+          assetLatitude
+      }
+
+
+      metadata.current.set(
+        entity.id,
+        item
+      )
+
+
+      studyEntities.current.push(
+        entity
+      )
+
+
+      return {
+        entity,
+        asset:
+          item
+      }
+    }
+
+
+    /*
+     * DAM
+     */
+    const dam =
+      viewer.entities.add({
+        id:
+          `dam-${selectedStudyCase.case_id}`,
+
+        name:
+          selectedStudyCase.dam_name,
+
+        show: true,
+
+        position:
+          Cartesian3.fromDegrees(
+            longitude,
+            latitude,
+            180
+          ),
+
+        point: {
+          pixelSize:
+            18,
+
+          color:
+            cssColor(
+              '#60eef2'
+            ),
+
+          outlineColor:
+            Color.WHITE,
+
+          outlineWidth:
+            3,
+
+          disableDepthTestDistance:
+            Number
+              .POSITIVE_INFINITY
+        },
+
+        label: {
+          text:
+            `${selectedStudyCase.dam_name} DAM`
+              .toUpperCase(),
+
+          font:
+            'bold 13px sans-serif',
+
+          fillColor:
+            Color.WHITE,
+
+          style:
+            LabelStyle
+              .FILL_AND_OUTLINE,
+
+          outlineColor:
+            cssColor(
+              '#102332'
+            ),
+
+          outlineWidth:
+            4,
+
+          pixelOffset:
+            new Cartesian2(
+              0,
+              -28
+            ),
+
+          disableDepthTestDistance:
+            Number
+              .POSITIVE_INFINITY
+        }
+      })
+
+
+    metadata.current.set(
+      dam.id,
+      {
+        type: 'dam',
+        name:
+          selectedStudyCase
+            .dam_name
+      }
+    )
+
+
+    studyEntities.current.push(
+      dam
+    )
+
+
+    /*
+     * --------------------------------------------------------
+     * UJJANI DATA-DRIVEN CASE
+     * --------------------------------------------------------
+     */
+    if (
+      selectedStudyCase.case_id ===
+      'ujjani'
+    ) {
+      const spatial =
+        selectedStudyCase.spatial ||
+        {}
+
+
+      /*
+       * Generic safe entity-add helper.
+       */
+      const addStudyEntity = (
+        feature,
+        layer,
+        entityDefinition,
+        fallbackId
+      ) => {
+        if (
+          !feature ||
+          !feature.geometry
+        ) {
+          return null
+        }
+
+
+        const props =
+          feature.properties ||
+          {}
+
+
+        const id =
+          props.building_id ||
+          props.road_id ||
+          props.facility_id ||
+          props.settlement_id ||
+          props.id ||
+          fallbackId
+
+
+        try {
+          const entity =
+            viewer.entities.add({
+              id:
+                `${layer}-ujjani-${id}`,
+
+              name:
+                props.name ||
+                props.building_type ||
+                props.road_type ||
+                layer,
+
+              ...entityDefinition
+            })
+
+
+          studyEntities.current.push(
+            entity
+          )
+
+
+          metadata.current.set(
+            entity.id,
+            {
+              ...props,
+              type:
+                layer ===
+                'buildings'
+                  ? 'building'
+                  : layer ===
+                    'roads'
+                    ? 'road'
+                    : layer ===
+                      'facilities'
+                      ? 'facility'
+                      : layer
+            }
+          )
+
+
+          return {
+            entity,
+            asset:
+              props
+          }
+
+        } catch (error) {
+          console.error(
+            `Failed to create ${layer} entity`,
+            feature,
+            error
+          )
+
+          return null
+        }
+      }
+
+
+      /*
+       * RESERVOIR
+       *
+       * Always visible as geographic context.
+       */
+      const reservoirFeatures = []
+
+
+      reservoirFeatures.forEach(
+        (
+          feature,
+          index
+        ) => {
+          if (
+            feature
+              ?.geometry
+              ?.type !==
+            'Polygon'
+          ) {
+            return
+          }
+
+
+          const ring =
+            feature
+              .geometry
+              .coordinates
+              ?.[0]
+
+
+          const positions =
+            toPolygonPositions(
+              ring,
+              10
+            )
+
+
+          if (
+            positions.length <
+            3
+          ) {
+            return
+          }
+
+
+          addStudyEntity(
+            feature,
+            'reservoir',
+            {
+              show: true,
+
+              polygon: {
+                hierarchy:
+                  new PolygonHierarchy(
+                    positions
+                  ),
+
+                perPositionHeight:
+                  true,
+
+                material:
+                  colorMaterial(
+                    '#3a9fd1',
+                    0.35
+                  ),
+
+                /*
+                 * Disable outline to avoid Cesium
+                 * terrain-clamping outline warning.
+                 */
+                outline:
+                  false
+              }
+            },
+
+            `reservoir-${index}`
+          )
+        }
+      )
+
+
+      /*
+       * BHIMA RIVER CENTERLINE
+       *
+       * Always visible as geographic context.
+       */
+      const riverFeatures =
+        spatial
+          ?.real_river
+          ?.features ||
+        []
+
+
+      riverFeatures.forEach(
+        (
+          feature,
+          index
+        ) => {
+          if (feature?.geometry?.type !== 'LineString') {
+            return
+          }
+
+
+          const positions =
+            toPolylinePositions(
+              feature
+                .geometry
+                .coordinates,
+              55
+            )
+
+
+          if (
+            positions.length <
+            2
+          ) {
+            return
+          }
+
+
+          addStudyEntity(
+            feature,
+            'river',
+            {
+              show: true,
+
+              polyline: {
+                positions,
+
+                width:
+                  4,
+
+                material:
+                  colorMaterial(
+                    '#60eef2',
+                    0.95
+                  ),
+
+                clampToGround:
+                  true
+              },
+
+              label: index === 0 ? {
+                text: 'Bhima River',
+                font: 'bold 12px sans-serif',
+                fillColor: cssColor('#60eef2'),
+                style: LabelStyle.FILL_AND_OUTLINE,
+                outlineColor: cssColor('#102332'),
+                outlineWidth: 3,
+                pixelOffset: new Cartesian2(0, -18),
+                disableDepthTestDistance: Number.POSITIVE_INFINITY
+              } : undefined,
+
+              position: index === 0 ? positions[0] : undefined
+            },
+
+            `river-${index}`
+          )
+        }
+      )
+
+      /*
+       * TEMPORARY VISUAL DIAGNOSTIC ONLY.
+       * This line is intentionally not used by flood, timeline, or exposure code.
+       */
+      const demTestRiverFeatures = []
+
+      demTestRiverFeatures.forEach(
+        (feature, index) => {
+          const geometry = feature?.geometry
+          const parts = geometry?.type === 'LineString'
+            ? [geometry.coordinates]
+            : geometry?.type === 'MultiLineString'
+              ? geometry.coordinates
+              : []
+
+          parts.forEach((coordinates, partIndex) => {
+            if (!Array.isArray(coordinates) || coordinates.length < 2) return
+            const flatCoordinates = coordinates.flatMap(point =>
+              Array.isArray(point) && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1]))
+                ? [Number(point[0]), Number(point[1])]
+                : []
+            )
+            if (flatCoordinates.length < 4) return
+            try {
+              const positions = Cartesian3.fromDegreesArray(flatCoordinates)
+              const entity = viewer.entities.add({
+                id: `dem-test-river-ujjani-${index}-${partIndex}`,
+                name: 'DEM TEST RIVER',
+                polyline: { positions, width: 5, material: colorMaterial('#ff3dbb', 1), clampToGround: true },
+                label: partIndex === 0 ? {
+                  text: 'DEM TEST RIVER', font: 'bold 12px sans-serif', fillColor: cssColor('#ff70cd'), style: LabelStyle.FILL_AND_OUTLINE,
+                  outlineColor: cssColor('#102332'), outlineWidth: 3, pixelOffset: new Cartesian2(0, -18),
+                  disableDepthTestDistance: Number.POSITIVE_INFINITY
+                } : undefined,
+                position: partIndex === 0 ? positions[0] : undefined
+              })
+              studyEntities.current.push(entity)
+            } catch (error) {
+              console.warn('DEM test river visual unavailable', error)
+            }
+          })
+        }
+      )
+
+
+      /*
+       * BUILDING FOOTPRINTS
+       *
+       * The uploaded file contains valid Polygon features.
+       * They must remain POLYGONS, not points.
+       */
+      const buildingFeatures = []
+
+
+      buildingEntities.current =
+        buildingFeatures
+          .map(
+            (
+              feature,
+              index
+            ) => {
+              if (
+                feature
+                  ?.geometry
+                  ?.type !==
+                'Polygon'
+              ) {
+                console.warn(
+                  'Skipping unsupported building geometry',
+                  feature
+                    ?.geometry
+                    ?.type
+                )
+
+                return null
+              }
+
+
+              const ring =
+                feature
+                  .geometry
+                  .coordinates
+                  ?.[0]
+
+
+              const positions =
+                toPolygonPositions(
+                  ring,
+                  42
+                )
+
+
+              if (
+                positions.length <
+                3
+              ) {
+                console.warn(
+                  'Skipping invalid building polygon',
+                  feature
+                    ?.properties
+                    ?.building_id
+                )
+
+                return null
+              }
+
+
+              return addStudyEntity(
+                feature,
+                'buildings',
+                {
+                  show:
+                    Boolean(
+                      layers
+                        .buildings
+                    ),
+
+                  polygon: {
+                    hierarchy:
+                      new PolygonHierarchy(
+                        positions
+                      ),
+
+                    perPositionHeight:
+                      true,
+
+                    material:
+                      colorMaterial(
+                        '#ffffff',
+                        0.72
+                      ),
+
+                    outline:
+                      false
+                  }
+                },
+
+                `building-${index}`
+              )
+            }
+          )
+          .filter(Boolean)
+
+
+      /*
+       * ROAD LINES
+       *
+       * The uploaded roads file contains proper LineStrings.
+       */
+      const roadFeatures =
+        (spatial?.real_roads?.features || []).flatMap(feature =>
+          feature?.geometry?.type === 'MultiLineString'
+            ? feature.geometry.coordinates.map((coordinates, part) => ({ ...feature, geometry: { ...feature.geometry, type: 'LineString', coordinates }, properties: { ...feature.properties, road_part: part } }))
+            : [feature]
+        )
+
+
+      roadEntities.current =
+        roadFeatures
+          .map(
+            (
+              feature,
+              index
+            ) => {
+              if (
+                feature
+                  ?.geometry
+                  ?.type !==
+                'LineString'
+              ) {
+                console.warn(
+                  'Skipping unsupported road geometry',
+                  feature
+                    ?.geometry
+                    ?.type
+                )
+
+                return null
+              }
+
+
+              const positions =
+                toPolylinePositions(
+                  feature
+                    .geometry
+                    .coordinates,
+                  58
+                )
+
+
+              if (
+                positions.length <
+                2
+              ) {
+                console.warn(
+                  'Skipping invalid road',
+                  feature
+                    ?.properties
+                    ?.road_id
+                )
+
+                return null
+              }
+
+
+              return addStudyEntity(
+                feature,
+                'roads',
+                {
+                  show:
+                    Boolean(
+                      layers.roads
+                    ),
+
+                  polyline: {
+                    positions,
+
+                    width:
+                      ['motorway', 'trunk', 'primary'].includes(feature?.properties?.highway)
+                        ? 2.5
+                        : ['secondary', 'tertiary'].includes(feature?.properties?.highway)
+                          ? 1.8
+                          : 1,
+
+                    material:
+                      colorMaterial(
+                        '#d6a956',
+                        0.72
+                      ),
+
+                    clampToGround:
+                      true
+                  }
+                },
+
+                `road-${index}`
+              )
+            }
+          )
+          .filter(Boolean)
+
+
+      /*
+       * FACILITIES
+       */
+      /* Keep OSM facilities in case data; do not render point markers before exposure modelling. */
+      const facilityFeatures = []
+
+
+      facilityEntities.current =
+        facilityFeatures
+          .map(
+            (
+              feature,
+              index
+            ) => {
+              if (
+                feature
+                  ?.geometry
+                  ?.type !==
+                'Point'
+              ) {
+                console.warn(
+                  'Skipping unsupported facility geometry',
+                  feature
+                    ?.geometry
+                    ?.type
+                )
+
+                return null
+              }
+
+
+              const coords =
+                feature
+                  ?.geometry
+                  ?.coordinates
+
+
+              if (
+                !Array.isArray(
+                  coords
+                ) ||
+                coords.length < 2
+              ) {
+                return null
+              }
+
+
+              const lon =
+                Number(
+                  coords[0]
+                )
+
+              const lat =
+                Number(
+                  coords[1]
+                )
+
+
+              if (
+                !Number.isFinite(
+                  lon
+                ) ||
+                !Number.isFinite(
+                  lat
+                )
+              ) {
+                return null
+              }
+
+
+              return addStudyEntity(
+                {
+                  ...feature,
+                  properties: {
+                    ...feature.properties,
+                    name: feature?.properties?.name || 'Unnamed facility'
+                  }
+                },
+                'facilities',
+                {
+                  show:
+                    Boolean(
+                      layers
+                        .facilities
+                    ),
+
+                  position:
+                    Cartesian3
+                      .fromDegrees(
+                        lon,
+                        lat,
+                        120
+                      ),
+
+                  point: {
+                    pixelSize:
+                      7,
+
+                    color:
+                      feature?.properties?.amenity === 'hospital' || feature?.properties?.amenity === 'clinic'
+                        ? cssColor('#ff7869')
+                        : feature?.properties?.amenity === 'police' || feature?.properties?.amenity === 'fire_station'
+                          ? cssColor('#ffcf5b')
+                          : cssColor('#59d5ac'),
+
+                    outlineColor:
+                      Color.WHITE,
+
+                    outlineWidth:
+                      2,
+
+                    disableDepthTestDistance:
+                      Number
+                        .POSITIVE_INFINITY
+                  }
+                },
+
+                `facility-${index}`
+              )
+            }
+          )
+          .filter(Boolean)
+
+
+      /*
+       * UJJANI SYNTHETIC FLOOD ENTITY
+       *
+       * Created once.
+       *
+       * At T+0 it remains hidden.
+       *
+       * IMPORTANT:
+       * We do NOT initialize it with PolygonHierarchy([]).
+       * Empty polygon hierarchy can cause Cesium errors.
+       */
+      const flood =
+        viewer.entities.add({
+          id:
+            'ujjani-synthetic-flood',
+
+          name:
+            'Synthetic breach inundation',
+
+          show:
+            false
+        })
+
+
+      metadata.current.set(
+        flood.id,
+        {
+          type:
+            'flood',
+
+          name:
+            'Synthetic Ujjani breach inundation'
+        }
+      )
+
+
+      ujjaniFloodRef.current =
+        flood
+
+
+      studyEntities.current.push(
+        flood
+      )
+
+    } else {
+
+      /*
+       * Legacy cases remain point-based only where
+       * the API itself supplies point assets.
+       */
+      buildingEntities.current =
+        (
+          selectedStudyCase
+            .exposure
+            ?.buildings ||
+          []
+        )
+          .map(
+            asset =>
+              addPoint(
+                asset,
+                'building',
+                Color.WHITE,
+                14
+              )
+          )
+          .filter(Boolean)
+
+
+      roadEntities.current =
+        (
+          selectedStudyCase
+            .exposure
+            ?.roads ||
+          []
+        )
+          .map(
+            asset =>
+              addPoint(
+                asset,
+                'road',
+                cssColor(
+                  '#ffd166'
+                ),
+                13
+              )
+          )
+          .filter(Boolean)
+
+
+      facilityEntities.current =
+        (
+          selectedStudyCase
+            .exposure
+            ?.facilities ||
+          []
+        )
+          .map(
+            asset =>
+              addPoint(
+                asset,
+                'facility',
+                cssColor(
+                  '#ffc078'
+                ),
+                16
+              )
+          )
+          .filter(Boolean)
+    }
+
+
+    /*
+     * ALWAYS fly directly to selected dam.
+     *
+     * Do NOT calculate destination from exposure bounds.
+     */
+    try {
+      viewer.camera.cancelFlight()
+
+      viewer.camera.flyTo({
+        destination:
+          Cartesian3.fromDegrees(
+            longitude,
+            latitude,
+            30000
+          ),
+
+        orientation:
+          INITIAL_ORIENTATION,
+
+        duration:
+          0.8
+      })
+
+    } catch (error) {
+      console.error(
+        'Camera flyTo failed:',
+        error
+      )
+    }
+
+
+    setMapError('')
+
+  }, [
+    ready,
+    selectedStudyCase
+  ])
+
+
+  /*
+   * ----------------------------------------------------------
+   * UJJANI FLOOD UPDATE
+   * ----------------------------------------------------------
+   */
+  useEffect(() => {
+    const viewer =
+      viewerRef.current
+
+    const flood =
+      ujjaniFloodRef.current
+
+
+    if (
+      !viewer ||
+      viewer.isDestroyed() ||
+      !flood ||
+      selectedStudyCase
+        ?.case_id !==
+      'ujjani'
+    ) {
+      return
+    }
+
+    /* Synthetic Ujjani inundation is hidden until it is spatially aligned. */
+    flood.show = false
+    return
+
+
+    const ring =
+      buildUjjaniFloodRing(
+        selectedStudyCase,
+        minute
+      )
+
+
+    /*
+     * T+0 OR INVALID RIVER.
+     *
+     * Hide flood.
+     *
+     * Never assign an empty PolygonHierarchy.
+     */
+    if (
+      !layers.flood ||
+      ring.length < 4
+    ) {
+      flood.show =
+        false
+
+      return
+    }
+
+
+    const positions =
+      toPolygonPositions(
+        ring,
+        35
+      )
+
+
+    if (
+      !Array.isArray(
+        positions
+      ) ||
+      positions.length < 3
+    ) {
+      flood.show =
+        false
+
+      return
+    }
+
+
+    try {
+      /*
+       * Create polygon graphics only when valid geometry exists.
+       */
+      if (!flood.polygon) {
+        flood.polygon = {
+          hierarchy:
+            new PolygonHierarchy(
+              positions
+            ),
+
+          perPositionHeight:
+            true,
+
+          material:
+            colorMaterial(
+              '#368cf2',
+              0.42
+            ),
+
+          outline:
+            false
+        }
+
+      } else {
+        flood.polygon.hierarchy =
+          new PolygonHierarchy(
+            positions
+          )
+      }
+
+
+      flood.show =
+        true
+
+      setMapError('')
+
+    } catch (error) {
+      console.error(
+        'Ujjani flood update failed:',
+        error
+      )
+
+      flood.show =
+        false
+
+      /*
+       * Do NOT crash MapView.
+       */
+      setMapError(
+        'Flood visualization temporarily unavailable.'
+      )
+    }
+
+  }, [
+    minute,
+    layers.flood,
+    selectedStudyCase
+  ])
+
+
+  /*
+   * SATELLITE / STREET BASEMAP
    */
   useEffect(() => {
     const {
       satellite,
       streets
-    } = imageryRef.current
+    } =
+      imageryRef.current
+
 
     if (
       !satellite ||
@@ -740,25 +2258,29 @@ export default function MapView() {
       return
     }
 
+
     satellite.show =
-      layers.satellite
+      Boolean(
+        layers.satellite
+      )
 
     streets.show =
       !layers.satellite
+
   }, [
     layers.satellite
   ])
 
+
   /*
-   * TERRAIN
+   * TERRAIN STATUS ONLY.
    *
-   * There is no real terrain provider yet.
-   * Therefore this button is only status for now.
-   * Crucially, it DOES NOT swap providers or rebuild Cesium.
+   * Real DEM terrain rendering is not connected yet.
    */
   useEffect(() => {
     const viewer =
       viewerRef.current
+
 
     if (
       !viewer ||
@@ -767,116 +2289,221 @@ export default function MapView() {
       return
     }
 
-    viewer.terrainProvider =
-      viewer.terrainProvider ||
-      new EllipsoidTerrainProvider()
+
+    if (
+      !viewer.terrainProvider
+    ) {
+      viewer.terrainProvider =
+        new EllipsoidTerrainProvider()
+    }
+
   }, [
     layers.terrain
   ])
 
+
   /*
-   * FLOOD FRAME VISIBILITY
+   * LEGACY PROTOTYPE FLOOD VISIBILITY
    *
-   * Geometry NEVER changes during playback.
-   * Only show flags change.
+   * Ujjani never shows these.
    */
   useEffect(() => {
     if (!ready) {
       return
     }
 
-    floodFramesRef.current.forEach(
-      (
-        entities,
-        frameMinute
-      ) => {
-        const visible =
-          layers.flood &&
-          activeDisplayMinute > 0 &&
-          frameMinute ===
-            activeDisplayMinute
 
-        entities.forEach(
-          ({ entity }) => {
-            entity.show =
-              visible
-          }
-        )
-      }
-    )
+    floodFramesRef
+      .current
+      .forEach(
+        (
+          entities,
+          frameMinute
+        ) => {
+          const visible =
+            selectedStudyCase
+              ?.case_id !==
+              'ujjani' &&
+            layers.flood &&
+            activeDisplayMinute >
+              0 &&
+            frameMinute ===
+              activeDisplayMinute
+
+
+          entities.forEach(
+            ({ entity }) => {
+              if (entity) {
+                entity.show =
+                  visible
+              }
+            }
+          )
+        }
+      )
+
   }, [
     ready,
     layers.flood,
-    activeDisplayMinute
+    activeDisplayMinute,
+    selectedStudyCase
   ])
 
+
   /*
-   * BUILDINGS
+   * ----------------------------------------------------------
+   * BUILDINGS VISIBILITY
+   * ----------------------------------------------------------
+   *
+   * CRITICAL FIX:
+   *
+   * Ujjani buildings are POLYGONS.
+   *
+   * Never assume entity.point exists.
    */
   useEffect(() => {
-    buildingEntities.current.forEach(
-      ({
-        entity,
-        asset
-      }) => {
-        entity.show =
-          layers.buildings
+    buildingEntities
+      .current
+      .forEach(
+        item => {
+          const entity =
+            item?.entity
 
-        entity.point.color = Color.WHITE
-      }
-    )
+          if (!entity) {
+            return
+          }
+
+
+          entity.show =
+            Boolean(
+              layers.buildings
+            )
+
+
+          if (entity.point) {
+            entity.point.color =
+              Color.WHITE
+          }
+
+
+          if (entity.polygon) {
+            entity
+              .polygon
+              .material =
+              colorMaterial(
+                '#ffffff',
+                0.72
+              )
+          }
+        }
+      )
+
   }, [
-    layers.buildings,
-    frame
+    layers.buildings
   ])
 
+
   /*
-   * ROADS
+   * ----------------------------------------------------------
+   * ROADS VISIBILITY
+   * ----------------------------------------------------------
+   *
+   * CRITICAL FIX:
+   *
+   * Ujjani roads are POLYLINES.
+   *
+   * Never assume entity.point exists.
    */
   useEffect(() => {
-    roadEntities.current.forEach(
-      ({
-        entity,
-        asset
-      }) => {
-        entity.show =
-          layers.roads
+    roadEntities
+      .current
+      .forEach(
+        item => {
+          const entity =
+            item?.entity
 
-        entity.point.color = cssColor('#ffd166')
-      }
-    )
+          if (!entity) {
+            return
+          }
+
+
+          entity.show =
+            Boolean(
+              layers.roads
+            )
+
+
+          if (entity.point) {
+            entity.point.color =
+              cssColor(
+                '#ffd166'
+              )
+          }
+
+
+          if (entity.polyline) {
+            entity
+              .polyline
+              .material =
+              colorMaterial(
+                '#ffd166',
+                0.95
+              )
+          }
+        }
+      )
+
   }, [
-    layers.roads,
-    frame
+    layers.roads
   ])
 
+
   /*
-   * FACILITIES
+   * FACILITIES VISIBILITY
    */
   useEffect(() => {
-    facilityEntities.current.forEach(
-      ({
-        entity,
-        asset
-      }) => {
-        entity.show =
-          layers.facilities
+    facilityEntities
+      .current
+      .forEach(
+        item => {
+          const entity =
+            item?.entity
 
-        entity.point.color = cssColor('#ffc078')
-      }
-    )
+          if (!entity) {
+            return
+          }
+
+
+          entity.show =
+            Boolean(
+              layers.facilities
+            )
+
+
+          if (entity.point) {
+            entity.point.color =
+              cssColor(
+                '#ffc078'
+              )
+          }
+        }
+      )
+
   }, [
-    layers.facilities,
-    frame
+    layers.facilities
   ])
 
+
   /*
-   * ROBUST FLOOD FOCUS
+   * ----------------------------------------------------------
+   * FIT ACTIVE FLOOD
+   * ----------------------------------------------------------
    */
   const fitFlood =
     useCallback(() => {
       const viewer =
         viewerRef.current
+
 
       if (
         !viewer ||
@@ -885,17 +2512,41 @@ export default function MapView() {
         return
       }
 
-      const current =
-        getFloodVisual(
-          useDashboard
-            .getState()
-            .minute
-        )
+
+      let ring = []
+
+
+      if (
+        selectedStudyCase
+          ?.case_id ===
+        'ujjani'
+      ) {
+        ring =
+          buildUjjaniFloodRing(
+            selectedStudyCase,
+            useDashboard
+              .getState()
+              .minute
+          )
+
+      } else {
+        const current =
+          getFloodVisual(
+            useDashboard
+              .getState()
+              .minute
+          )
+
+        ring =
+          current.ring
+      }
+
 
       const points =
         toGroundPositions(
-          current.ring
+          ring
         )
+
 
       if (
         points.length < 3
@@ -907,116 +2558,77 @@ export default function MapView() {
         return
       }
 
+
       try {
         const sphere =
-          BoundingSphere.fromPoints(
-            points
-          )
+          BoundingSphere
+            .fromPoints(
+              points
+            )
+
 
         if (
           !sphere ||
           !Number.isFinite(
             sphere.radius
           ) ||
-          sphere.radius <= 0
+          sphere.radius <=
+            0
         ) {
           throw new Error(
             'Invalid flood bounds'
           )
         }
 
-        viewer.camera.cancelFlight()
+
+        viewer.camera
+          .cancelFlight()
+
 
         viewer.camera
           .flyToBoundingSphere(
             sphere,
             {
-              duration: 0.8,
+              duration:
+                0.8,
 
               offset:
                 new HeadingPitchRange(
                   0,
-                  CesiumMath.toRadians(
-                    -70
-                  ),
+
+                  CesiumMath
+                    .toRadians(
+                      -70
+                    ),
+
                   Math.max(
                     sphere.radius *
                       2.2,
+
                     5000
                   )
                 )
             }
           )
 
+
         setMapError('')
+
       } catch (error) {
-        console.error(error)
+        console.error(
+          'Flood focus failed:',
+          error
+        )
 
-        /*
-         * Fallback view instead of breaking Emergency Mode.
-         */
-        try {
-          const path =
-            normalizePath(
-              current.ring
-            )
-
-          const averageLon =
-            path.reduce(
-              (
-                total,
-                point
-              ) =>
-                total +
-                point[0],
-              0
-            ) /
-            path.length
-
-          const averageLat =
-            path.reduce(
-              (
-                total,
-                point
-              ) =>
-                total +
-                point[1],
-              0
-            ) /
-            path.length
-
-          viewer.camera.flyTo({
-            destination:
-              Cartesian3.fromDegrees(
-                averageLon,
-                averageLat,
-                22000
-              ),
-
-            orientation: {
-              heading: 0,
-              pitch:
-                CesiumMath.toRadians(
-                  -70
-                ),
-              roll: 0
-            },
-
-            duration: 0.8
-          })
-
-          setMapError('')
-        } catch (fallbackError) {
-          console.error(
-            fallbackError
-          )
-
-          setMapError(
-            'Flood focus unavailable.'
-          )
-        }
+        setMapError(
+          'Flood focus unavailable.'
+        )
       }
-    }, [])
+
+    }, [
+      selectedStudyCase
+    ])
+
 
   /*
    * EMERGENCY MODE FOCUS
@@ -1029,26 +2641,34 @@ export default function MapView() {
       return undefined
     }
 
+
     const handle =
       requestAnimationFrame(
         fitFlood
       )
+
 
     return () => {
       cancelAnimationFrame(
         handle
       )
     }
+
   }, [
     ready,
     focusRequest,
     fitFlood
   ])
 
+
+  /*
+   * RECENTER
+   */
   function recenter() {
     const viewer =
       viewerRef.current
 
+
     if (
       !viewer ||
       viewer.isDestroyed()
@@ -1056,22 +2676,71 @@ export default function MapView() {
       return
     }
 
-    viewer.camera.flyTo({
-      destination: selectedStudyCase && Number.isFinite(Number(selectedStudyCase.longitude)) && Number.isFinite(Number(selectedStudyCase.latitude))
-        ? Cartesian3.fromDegrees(Number(selectedStudyCase.longitude), Number(selectedStudyCase.latitude), 30000)
-        : viewer.camera.position,
 
-      orientation:
-        INITIAL_ORIENTATION,
+    const longitude =
+      Number(
+        selectedStudyCase
+          ?.longitude
+      )
 
-      duration: 1
-    })
+    const latitude =
+      Number(
+        selectedStudyCase
+          ?.latitude
+      )
+
+
+    if (
+      !Number.isFinite(
+        longitude
+      ) ||
+      !Number.isFinite(
+        latitude
+      )
+    ) {
+      return
+    }
+
+
+    try {
+      viewer.camera
+        .cancelFlight()
+
+
+      viewer.camera
+        .flyTo({
+          destination:
+            Cartesian3
+              .fromDegrees(
+                longitude,
+                latitude,
+                30000
+              ),
+
+          orientation:
+            INITIAL_ORIENTATION,
+
+          duration:
+            0.8
+        })
+
+    } catch (error) {
+      console.error(
+        'Recenter failed:',
+        error
+      )
+    }
   }
 
+
+  /*
+   * ZOOM
+   */
   function zoom(direction) {
     const viewer =
       viewerRef.current
 
+
     if (
       !viewer ||
       viewer.isDestroyed()
@@ -1079,19 +2748,25 @@ export default function MapView() {
       return
     }
 
+
     const camera =
       viewer.camera
+
 
     const height =
       camera
         .positionCartographic
         ?.height
 
+
     if (
-      !Number.isFinite(height)
+      !Number.isFinite(
+        height
+      )
     ) {
       return
     }
+
 
     const amount =
       Math.max(
@@ -1099,12 +2774,18 @@ export default function MapView() {
         100
       )
 
+
     if (direction > 0) {
-      camera.zoomIn(amount)
+      camera.zoomIn(
+        amount
+      )
     } else {
-      camera.zoomOut(amount)
+      camera.zoomOut(
+        amount
+      )
     }
   }
+
 
   return (
     <div className="map-container">
@@ -1112,21 +2793,43 @@ export default function MapView() {
       <div
         ref={containerRef}
         style={{
-          position: 'absolute',
-          inset: 0
+          position:
+            'absolute',
+
+          inset:
+            0
         }}
       />
 
+
       <div className="map-vignette" />
+
 
       <div className="map-heading">
 
         <div className="eyebrow">
-          {selectedStudyCase?.river_name || 'STUDY AREA'} RIVER BASIN{' '}
+
+          {selectedStudyCase
+            ?.river_name ||
+            'STUDY AREA'}
+
+          {' '}
+          RIVER BASIN
+
+          {' '}
+
           <span>
-            {selectedStudyCase?.state || 'INDIA'}, INDIA
+
+            {selectedStudyCase
+              ?.state ||
+              'INDIA'}
+
+            , INDIA
+
           </span>
+
         </div>
+
 
         <h1>
           Eyes on the water.
@@ -1137,6 +2840,7 @@ export default function MapView() {
           </span>
         </h1>
 
+
         <div className="map-tags">
 
           <span>
@@ -1145,13 +2849,17 @@ export default function MapView() {
             3D GEOSPATIAL VIEW
           </span>
 
+
           <span>
-            SYNTHETIC SIMULATION DATA · not hydraulic output
+            {selectedStudyCase?.case_id === 'ujjani'
+              ? 'HYDRAULIC INUNDATION PENDING'
+              : 'SYNTHETIC SIMULATION DATA · not hydraulic output'}
           </span>
 
         </div>
 
       </div>
+
 
       <div
         className="layer-controls glass"
@@ -1163,6 +2871,7 @@ export default function MapView() {
           {' '}
           LAYERS
         </span>
+
 
         {layerOptions.map(
           ([
@@ -1181,7 +2890,9 @@ export default function MapView() {
               }
 
               onClick={() =>
-                toggleLayer(key)
+                toggleLayer(
+                  key
+                )
               }
 
               aria-pressed={
@@ -1191,9 +2902,11 @@ export default function MapView() {
 
               <Icon size={16} />
 
+
               <span>
 
                 {label}
+
 
                 <small>
 
@@ -1221,21 +2934,28 @@ export default function MapView() {
 
       </div>
 
+
       <div className="map-navigation glass">
 
         <IconButton
           label="Recenter"
-          onClick={recenter}
+          onClick={
+            recenter
+          }
         >
           <Crosshair size={19} />
         </IconButton>
 
+
         <IconButton
           label="Fit active flood"
-          onClick={fitFlood}
+          onClick={
+            fitFlood
+          }
         >
           <Focus size={19} />
         </IconButton>
+
 
         <IconButton
           label="Zoom in"
@@ -1245,6 +2965,7 @@ export default function MapView() {
         >
           <Plus size={19} />
         </IconButton>
+
 
         <IconButton
           label="Zoom out"
@@ -1257,6 +2978,7 @@ export default function MapView() {
 
       </div>
 
+
       <div className="active-frame glass">
 
         T+
@@ -1267,6 +2989,7 @@ export default function MapView() {
             '0'
           )}
 
+
         <span>
           0–
           {frame.depth
@@ -1275,11 +2998,15 @@ export default function MapView() {
           m · {frame.risk}
         </span>
 
+
         <small>
-          SYNTHETIC SIMULATION DATA
+          {selectedStudyCase?.case_id === 'ujjani'
+            ? 'HYDRAULIC INUNDATION PENDING'
+            : 'SYNTHETIC SIMULATION DATA'}
         </small>
 
       </div>
+
 
       {loading && (
         <div className="map-loading">
@@ -1287,15 +3014,18 @@ export default function MapView() {
         </div>
       )}
 
+
       {mapError && (
         <div
           className="map-notice"
           role="status"
         >
           <TriangleAlert size={15} />
+          {' '}
           {mapError}
         </div>
       )}
+
 
       {detail && (
         <div className="map-popover glass">
@@ -1309,20 +3039,28 @@ export default function MapView() {
             <X size={16} />
           </IconButton>
 
+
           <span className="eyebrow">
             <MapPin size={14} />
             {' '}
             SIMULATION FEATURE
           </span>
 
+
           <h3>
 
             {detail.type ===
             'flood'
+
               ? `Flood extent · T+${frame.minute.toFixed(1)} min`
-              : detail.name}
+
+              : detail.name ||
+                detail.building_type ||
+                detail.road_type ||
+                detail.type}
 
           </h3>
+
 
           {detail.type ===
           'flood' && (
@@ -1336,17 +3074,27 @@ export default function MapView() {
             </p>
           )}
 
+
           {detail.type !==
             'flood' &&
             detail.type !==
-              'dam' && (
+            'dam' && (
 
               <p>
-                {detail.kind}
-                <br />
-                {threat}
+
+                {detail.kind ||
+                  detail.amenity ||
+                  detail.building_type ||
+                  detail.road_type ||
+                  detail.type}
+
+                {detail.source && (
+                  <><br />Source: {detail.source}</>
+                )}
+
               </p>
             )}
+
 
           <small>
             SYNTHETIC SIMULATION DATA · not validated hydraulic output.
@@ -1355,22 +3103,31 @@ export default function MapView() {
         </div>
       )}
 
+
       <div className="depth-legend glass">
 
         <span>
           WATER DEPTH{' '}
+
           <small>
-            sample
+            synthetic
           </small>
         </span>
 
+
         <div
           style={{
-            display: 'grid',
+            display:
+              'grid',
+
             gridTemplateColumns:
               '1fr 1fr',
-            gap: 8,
-            marginTop: 8
+
+            gap:
+              8,
+
+            marginTop:
+              8
           }}
         >
 
@@ -1381,21 +3138,33 @@ export default function MapView() {
                 key={band.id}
 
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5
+                  display:
+                    'flex',
+
+                  alignItems:
+                    'center',
+
+                  gap:
+                    5
                 }}
               >
 
                 <i
                   style={{
-                    width: 12,
-                    height: 12,
+                    width:
+                      12,
+
+                    height:
+                      12,
+
                     background:
                       band.color,
-                    borderRadius: 2
+
+                    borderRadius:
+                      2
                   }}
                 />
+
 
                 {band.label}
 
@@ -1407,18 +3176,24 @@ export default function MapView() {
 
       </div>
 
+
       <div className="coordinate-strip">
 
         <span>
-          {coordinates.lat.toFixed(4)}
+          {coordinates.lat
+            .toFixed(4)}
           ° N{' '}
-          {coordinates.lon.toFixed(4)}
+
+          {coordinates.lon
+            .toFixed(4)}
           ° E
         </span>
+
 
         <span>
           Elevation —
         </span>
+
 
         <span>
           DEM terrain pending

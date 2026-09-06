@@ -39,4 +39,8 @@ class StudyCase(StudyCaseSummary):
     roughness: list[dict[str, Any]] = Field(default_factory=list)
     weather: list[dict[str, Any]] = Field(default_factory=list)
     exposure: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    spatial: dict[str, Any] = Field(default_factory=dict)
+    timeline: list[dict[str, float]] = Field(default_factory=list)
+    case_metadata: dict[str, Any] = Field(default_factory=dict)
+    limited_dataset: bool = True
     data_quality: DataQuality = Field(default_factory=DataQuality)

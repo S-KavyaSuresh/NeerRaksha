@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from functools import cached_property
 from math import asin, cos, radians, sin, sqrt
-from pathlib import Path
+import csv
+import json
 from typing import Any
 
 from .models import DataQuality, DemMetadata, StudyCase, StudyCaseSummary
 from .normalizer import normalized_id, normalized_name
-from .paths import CSV_FILES, discover_dem_files
+from .paths import CSV_FILES, UJJANI_REAL_ROOT, UJJANI_ROOT, discover_dem_files
 
 
 class StudyCaseRepository:
@@ -151,6 +152,101 @@ class StudyCaseRepository:
         exposure["settlements"] = [self._exposure_record(item, "settlements") for item in self._nearby_rows("population", dam)]
         return exposure
 
+    @staticmethod
+    def _geojson(name: str) -> dict[str, Any]:
+        path = UJJANI_ROOT / f"{name}.geojson"
+        if not path.exists():
+            return {"type": "FeatureCollection", "features": []}
+        with path.open(encoding="utf-8") as source:
+            return json.load(source)
+
+    @staticmethod
+    def _optional_geojson(path: str) -> dict[str, Any]:
+        """Load optional visual diagnostics without making the study case unavailable."""
+        source_path = UJJANI_ROOT / path
+        if not source_path.exists():
+            return {"type": "FeatureCollection", "features": []}
+
+    @staticmethod
+    def _real_river_geojson() -> dict[str, Any]:
+        path = UJJANI_REAL_ROOT / "bhima_river_real.geojson"
+        try:
+            with path.open(encoding="utf-8") as source:
+                value = json.load(source)
+            if not isinstance(value, dict) or not isinstance(value.get("features"), list):
+                return {"type": "FeatureCollection", "features": []}
+            for feature in value["features"]:
+                if isinstance(feature, dict):
+                    properties = feature.setdefault("properties", {})
+                    properties.setdefault("source", "OpenStreetMap")
+                    properties["data_type"] = "real geospatial reference"
+            return value
+        except (OSError, json.JSONDecodeError):
+            return {"type": "FeatureCollection", "features": []}
+
+    @staticmethod
+    def _real_osm_geojson(filename: str) -> dict[str, Any]:
+        path = UJJANI_REAL_ROOT / filename
+        try:
+            with path.open(encoding="utf-8") as source:
+                value = json.load(source)
+            if not isinstance(value, dict) or not isinstance(value.get("features"), list):
+                return {"type": "FeatureCollection", "features": []}
+            for feature in value["features"]:
+                if isinstance(feature, dict):
+                    properties = feature.setdefault("properties", {})
+                    properties.setdefault("source", "OpenStreetMap")
+                    properties["data_type"] = "real geospatial reference"
+            return value
+        except (OSError, json.JSONDecodeError):
+            return {"type": "FeatureCollection", "features": []}
+        try:
+            with source_path.open(encoding="utf-8") as source:
+                value = json.load(source)
+            return value if isinstance(value, dict) and isinstance(value.get("features"), list) else {"type": "FeatureCollection", "features": []}
+        except (OSError, json.JSONDecodeError):
+            return {"type": "FeatureCollection", "features": []}
+
+    @cached_property
+    def ujjani_case(self) -> StudyCase | None:
+        metadata_path = UJJANI_ROOT / "metadata.json"
+        required = ["metadata.json", "dam.geojson", "reservoir.geojson", "river_centerline.geojson", "buildings.geojson", "roads.geojson", "facilities.geojson", "settlements.geojson", "population_zones.geojson", "breach_hydrograph_baseline.csv", "ujjani_dem.tif"]
+        missing = [name for name in required if not (UJJANI_ROOT / name).exists()]
+        if not metadata_path.exists() or missing:
+            return None
+        with metadata_path.open(encoding="utf-8") as source:
+            metadata = json.load(source)
+        anchor = metadata["dam_anchor"]
+        with (UJJANI_ROOT / "breach_hydrograph_baseline.csv").open(encoding="utf-8", newline="") as source:
+            timeline = [{key: float(value) for key, value in row.items()} for row in csv.DictReader(source)]
+        spatial = {name: self._geojson(name) for name in ("dam", "reservoir", "river_centerline", "cross_sections", "breach", "roughness_zones", "settlements", "buildings", "roads", "facilities", "population_zones")}
+        spatial["dem_test_river"] = self._optional_geojson("real_dem/river_centerline_real.geojson")
+        spatial["real_river"] = self._real_river_geojson()
+        spatial["real_roads"] = self._real_osm_geojson("roads_osm.geojson")
+        spatial["real_facilities"] = self._real_osm_geojson("facilities_osm.geojson")
+        def points(name: str, category: str) -> list[dict[str, Any]]:
+            records = []
+            for feature in spatial[name].get("features", []):
+                geometry = feature.get("geometry") or {}
+                if geometry.get("type") != "Point":
+                    continue
+                longitude, latitude = geometry.get("coordinates", [None, None])[:2]
+                properties = feature.get("properties") or {}
+                records.append({"id": properties.get(f"{category}_id") or properties.get("settlement_id"), "name": properties.get("name"), "asset_type": properties.get("facility_type") or category, "latitude": latitude, "longitude": longitude, "category": f"{category}s", "population_total": properties.get("population"), "criticality": properties.get("facility_type")})
+            return records
+        def lines(name: str) -> list[dict[str, Any]]:
+            records = []
+            for feature in spatial[name].get("features", []):
+                coordinates = (feature.get("geometry") or {}).get("coordinates") or []
+                if not coordinates:
+                    continue
+                longitude, latitude = coordinates[len(coordinates) // 2][:2]
+                properties = feature.get("properties") or {}
+                records.append({"id": properties.get("road_id"), "name": properties.get("name"), "asset_type": properties.get("road_type") or "road", "latitude": latitude, "longitude": longitude, "category": "roads"})
+            return records
+        dem = DemMetadata(path=str(UJJANI_ROOT / "ujjani_dem.tif"), filename="ujjani_dem.tif", width=metadata["dem"].get("width"), height=metadata["dem"].get("height"), crs=metadata["dem"].get("crs"), resolution=[metadata["dem"].get("resolution_m"), metadata["dem"].get("resolution_m")], bounds=metadata["dem"].get("bounds_projected"))
+        return StudyCase(case_id="ujjani", dam_id=metadata.get("case_id"), dam_name="Ujjani", river_name=anchor["river"], state=anchor["state"], latitude=anchor["latitude"], longitude=anchor["longitude"], dem_available=True, breach_available=True, reservoir_available=True, dem=dem, reservoir={"conditions": "reservoir_conditions.csv"}, breach={"scenarios": "breach_scenarios.csv"}, river={"name": anchor["river"]}, roughness=[], weather=[], exposure={"buildings": [], "roads": lines("roads"), "facilities": points("facilities", "facility"), "settlements": points("settlements", "settlement")}, spatial=spatial, timeline=timeline, case_metadata=metadata, limited_dataset=False, data_quality=DataQuality(warnings=["Synthetic breach, terrain and exposure case. Not an observed forecast or official advisory."]))
+
     @cached_property
     def cases(self) -> dict[str, StudyCase]:
         dams = self.tables.get("dams")
@@ -180,10 +276,13 @@ class StudyCaseRepository:
                 data_quality=DataQuality(missing_fields=[name for name, value in {"reservoir": reservoir, "breach": breach}.items() if not value], warnings=list(self._warnings)),
             )
             cases[case_id] = case
+        ujjani = self.ujjani_case
+        if ujjani:
+            cases = {ujjani.case_id: ujjani, **cases}
         return cases
 
     def list_study_cases(self) -> list[StudyCaseSummary]:
-        return [StudyCaseSummary(**case.model_dump(exclude={"dam_id", "dem", "reservoir", "breach", "river", "roughness", "weather", "exposure", "data_quality"})) for case in self.cases.values()]
+        return [StudyCaseSummary(**case.model_dump(exclude={"dam_id", "dem", "reservoir", "breach", "river", "roughness", "weather", "exposure", "spatial", "timeline", "case_metadata", "limited_dataset", "data_quality"})) for case in self.cases.values()]
 
     def get_study_case(self, case_id: str) -> StudyCase | None:
         return self.cases.get(case_id)

@@ -1,0 +1,22 @@
+{
+"type": "FeatureCollection",
+"name": "facilities",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "facility_id": "F01_HO", "name": "Synthetic Hospital 1", "facility_type": "hospital", "settlement_id": "S01", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.19779642924145, 18.099069388672049 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F01_SC", "name": "Synthetic School 1", "facility_type": "school", "settlement_id": "S01", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.193827419871994, 18.099615728784581 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F01_SH", "name": "Synthetic Shelter 1", "facility_type": "shelter", "settlement_id": "S01", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.19921006205854, 18.095452531841236 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F02_HO", "name": "Synthetic Hospital 2", "facility_type": "hospital", "settlement_id": "S02", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.273363802339944, 18.070609679883596 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F02_SC", "name": "Synthetic School 2", "facility_type": "school", "settlement_id": "S02", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.269395685324326, 18.071157565622254 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F02_SH", "name": "Synthetic Shelter 2", "facility_type": "shelter", "settlement_id": "S02", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.274775659490331, 18.066992279792515 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F03_HO", "name": "Synthetic Hospital 3", "facility_type": "hospital", "settlement_id": "S03", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.358448938472293, 18.088559371410408 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F03_SC", "name": "Synthetic School 3", "facility_type": "school", "settlement_id": "S03", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.354480712768051, 18.089109007388089 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F03_SH", "name": "Synthetic Shelter 3", "facility_type": "shelter", "settlement_id": "S03", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.359859179234064, 18.084941380891483 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F04_HO", "name": "Synthetic Hospital 4", "facility_type": "hospital", "settlement_id": "S04", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.443422995572305, 18.055637287811155 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F04_SC", "name": "Synthetic School 4", "facility_type": "school", "settlement_id": "S04", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.439455809211921, 18.056188652108208 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F04_SH", "name": "Synthetic Shelter 4", "facility_type": "shelter", "settlement_id": "S04", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.444831234558819, 18.052018704282393 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F05_HO", "name": "Synthetic Hospital 5", "facility_type": "hospital", "settlement_id": "S05", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.528535544451159, 18.079873271450275 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F05_SC", "name": "Synthetic School 5", "facility_type": "school", "settlement_id": "S05", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.524568127132042, 18.080426389339408 ] } },
+{ "type": "Feature", "properties": { "facility_id": "F05_SH", "name": "Synthetic Shelter 5", "facility_type": "shelter", "settlement_id": "S05", "provenance": "synthetic" }, "geometry": { "type": "Point", "coordinates": [ 75.529942204363934, 18.076254113688982 ] } }
+]
+}
