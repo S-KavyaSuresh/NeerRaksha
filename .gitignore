@@ -35,3 +35,5 @@ results/ujjani_delft3d/
 data/processed/simulations/
 results/benchmark/
 results/ujjani_scenario/
+
+western-zone-*.osm.pbf
