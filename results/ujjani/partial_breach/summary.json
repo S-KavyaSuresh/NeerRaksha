@@ -1,0 +1,172 @@
+{
+  "case_id": "ujjani",
+  "dam_name": "Ujjani Dam",
+  "scenario_id": "partial_breach",
+  "scenario_name": "Partial Breach",
+  "breach_type": "partial",
+  "breach_width_m": 80.0,
+  "breach_formation_time_min": 45.0,
+  "initial_water_level_m": 496.83,
+  "model_type": "Automated approximate 2D flood-routing prototype",
+  "validated_hydraulic_output": false,
+  "disclaimer": "Automated approximate 2D flood-routing prototype \u2014 not validated hydraulic output.",
+  "simulation_duration_min": 60,
+  "output_interval_min": 5,
+  "peak_breach_discharge_m3s": 24013.333333333332,
+  "injected_volume_m3": 54030000.0,
+  "downstream_outflow_m3": 0.0,
+  "final_stored_volume_m3": 54030000.000006355,
+  "mass_balance_error_percent": -1.1762623078245465e-11,
+  "flooded_area_km2": 1.9593294747982886,
+  "maximum_depth_m": 120.81362618692572,
+  "maximum_velocity_mps": 776.3641116556813,
+  "assumptions": {
+    "channel_manning_n": 0.035,
+    "floodplain_manning_n": 0.05,
+    "routing": "terrain-aware least-cost propagation with conservative volume filling",
+    "floodplain_buffer_m": 5000,
+    "boundary": "closed prototype domain"
+  },
+  "source_files": [
+    "data\\cases\\ujjani_synthetic\\real_dem\\ujjani_dem_cropped.tif",
+    "data\\cases\\ujjani_real\\bhima_downstream_hecras.geojson",
+    "data\\cases\\ujjani_synthetic\\breach_hydrograph_baseline.csv"
+  ],
+  "hydrograph_discharge_column": "breach_discharge_m3s",
+  "crs": "EPSG:4326",
+  "runtime_seconds": 6.598212499997317,
+  "available_frames": [
+    0,
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    35,
+    40,
+    45,
+    50,
+    55,
+    60
+  ],
+  "timeline": [
+    {
+      "minute": 0,
+      "feature_count": 0,
+      "flooded_area_km2": 0.0,
+      "max_depth_m": 0.0,
+      "max_velocity_mps": 0.0,
+      "stored_volume_m3": 0.0,
+      "injected_volume_m3": 0.0
+    },
+    {
+      "minute": 5,
+      "feature_count": 13,
+      "flooded_area_km2": 0.18591518738297902,
+      "max_depth_m": 4.002671114010695,
+      "max_velocity_mps": 12.777088273030262,
+      "stored_volume_m3": 400222.22222230816,
+      "injected_volume_m3": 400222.2222222222
+    },
+    {
+      "minute": 10,
+      "feature_count": 22,
+      "flooded_area_km2": 0.5234505275831448,
+      "max_depth_m": 6.988084113205332,
+      "max_velocity_mps": 30.822618876587644,
+      "stored_volume_m3": 1600888.8888894785,
+      "injected_volume_m3": 1600888.8888888888
+    },
+    {
+      "minute": 15,
+      "feature_count": 46,
+      "flooded_area_km2": 0.8790358859758329,
+      "max_depth_m": 7.9590837646250066,
+      "max_velocity_mps": 41.50455939225422,
+      "stored_volume_m3": 3602000.000000677,
+      "injected_volume_m3": 3601999.9999999995
+    },
+    {
+      "minute": 20,
+      "feature_count": 65,
+      "flooded_area_km2": 1.3375063480658977,
+      "max_depth_m": 9.471043044910743,
+      "max_velocity_mps": 40.995766796164816,
+      "stored_volume_m3": 6403555.5555526,
+      "injected_volume_m3": 6403555.555555555
+    },
+    {
+      "minute": 25,
+      "feature_count": 105,
+      "flooded_area_km2": 2.0225045384721168,
+      "max_depth_m": 55.477892142168116,
+      "max_velocity_mps": 130.55898205814898,
+      "stored_volume_m3": 10005555.555536257,
+      "injected_volume_m3": 10005555.555555556
+    },
+    {
+      "minute": 30,
+      "feature_count": 51,
+      "flooded_area_km2": 0.4304929338916553,
+      "max_depth_m": 120.81362618692572,
+      "max_velocity_mps": 776.3641116556813,
+      "stored_volume_m3": 14407999.999998868,
+      "injected_volume_m3": 14408000.0
+    },
+    {
+      "minute": 35,
+      "feature_count": 70,
+      "flooded_area_km2": 0.5577455621489371,
+      "max_depth_m": 97.38715315682072,
+      "max_velocity_mps": 480.4511807412969,
+      "stored_volume_m3": 19610888.888893835,
+      "injected_volume_m3": 19610888.888888888
+    },
+    {
+      "minute": 40,
+      "feature_count": 112,
+      "flooded_area_km2": 0.8176658241212573,
+      "max_depth_m": 95.82394780707034,
+      "max_velocity_mps": 191.89229536171345,
+      "stored_volume_m3": 25614222.2222065,
+      "injected_volume_m3": 25614222.22222222
+    },
+    {
+      "minute": 45,
+      "feature_count": 163,
+      "flooded_area_km2": 1.129931138851892,
+      "max_depth_m": 99.32170705070854,
+      "max_velocity_mps": 82.08389367943767,
+      "stored_volume_m3": 32418000.000000276,
+      "injected_volume_m3": 32417999.999999996
+    },
+    {
+      "minute": 50,
+      "feature_count": 224,
+      "flooded_area_km2": 1.4791989908771974,
+      "max_depth_m": 104.2601367447586,
+      "max_velocity_mps": 60.644681481293574,
+      "stored_volume_m3": 39621999.999976575,
+      "injected_volume_m3": 39622000.0
+    },
+    {
+      "minute": 55,
+      "feature_count": 230,
+      "flooded_area_km2": 1.7066292201029776,
+      "max_depth_m": 108.75909588199897,
+      "max_velocity_mps": 60.68197624069317,
+      "stored_volume_m3": 46825999.999978855,
+      "injected_volume_m3": 46826000.0
+    },
+    {
+      "minute": 60,
+      "feature_count": 254,
+      "flooded_area_km2": 1.9593294747982886,
+      "max_depth_m": 112.52049191980592,
+      "max_velocity_mps": 113.35206954068546,
+      "stored_volume_m3": 54030000.000006355,
+      "injected_volume_m3": 54030000.0
+    }
+  ]
+}

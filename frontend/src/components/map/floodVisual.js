@@ -42,25 +42,25 @@ export const depthBands = [
     id: 'shallow',
     minimum: 0,
     label: '0–1 m',
-    color: '#25d8e5'
+    color: '#22D3EE'
   },
   {
     id: 'moderate',
     minimum: 1,
     label: '1–3 m',
-    color: '#368cf2'
+    color: '#3B82F6'
   },
   {
     id: 'deep',
     minimum: 3,
     label: '3–6 m',
-    color: '#7164f4'
+    color: '#6366F1'
   },
   {
     id: 'very-deep',
     minimum: 6,
-    label: '6–9+ m',
-    color: '#c28cff'
+    label: '6+ m',
+    color: '#A855F7'
   }
 ]
 

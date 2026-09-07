@@ -1,0 +1,109 @@
+{
+  "case_id": "ujjani",
+  "dam_name": "Ujjani Dam",
+  "model_type": "automated_approximate_2d_flood_routing_prototype",
+  "disclaimer": "Automated approximate 2D flood-routing prototype \u2014 not validated hydraulic output.",
+  "simulation_duration_min": 60,
+  "output_interval_min": 5,
+  "peak_breach_discharge_m3s": 18010.0,
+  "injected_volume_m3": 64836000.0,
+  "downstream_outflow_m3": 0.0,
+  "final_stored_volume_m3": 64835943.23915852,
+  "mass_balance_error_percent": 8.75452549222463e-05,
+  "flooded_area_km2": 6.645114197577061,
+  "maximum_depth_m": 17.488874839018877,
+  "maximum_velocity_mps": 115.94306919203417,
+  "assumptions": {
+    "channel_manning_n": 0.035,
+    "floodplain_manning_n": 0.05,
+    "corridor_half_width_m": 300,
+    "boundaries": "closed; downstream outflow not activated in first prototype"
+  },
+  "source_files": [
+    "data\\cases\\ujjani_synthetic\\real_dem\\ujjani_dem_cropped.tif",
+    "data\\cases\\ujjani_real\\bhima_downstream_hecras.geojson",
+    "data\\cases\\ujjani_synthetic\\breach_hydrograph_baseline.csv"
+  ],
+  "crs": "EPSG:4326",
+  "runtime_seconds": 5.426755799999228,
+  "timeline": [
+    {
+      "minute": 0,
+      "flooded_area_km2": 0.0,
+      "max_depth_m": 0.0,
+      "max_velocity_mps": 0.0
+    },
+    {
+      "minute": 5,
+      "flooded_area_km2": 2.825730348039356,
+      "max_depth_m": 6.498326101936527,
+      "max_velocity_mps": 32.534990471184805
+    },
+    {
+      "minute": 10,
+      "flooded_area_km2": 3.7210112503884587,
+      "max_depth_m": 8.143430554719203,
+      "max_velocity_mps": 43.99417846757973
+    },
+    {
+      "minute": 15,
+      "flooded_area_km2": 4.582899619081395,
+      "max_depth_m": 9.430695437327813,
+      "max_velocity_mps": 53.27706200409071
+    },
+    {
+      "minute": 20,
+      "flooded_area_km2": 5.262482804029858,
+      "max_depth_m": 10.519353518533649,
+      "max_velocity_mps": 61.31474435037872
+    },
+    {
+      "minute": 25,
+      "flooded_area_km2": 5.725465770668053,
+      "max_depth_m": 11.495199449577512,
+      "max_velocity_mps": 68.65069346488009
+    },
+    {
+      "minute": 30,
+      "flooded_area_km2": 5.989898537188504,
+      "max_depth_m": 12.413277864182533,
+      "max_velocity_mps": 75.6565636520599
+    },
+    {
+      "minute": 35,
+      "flooded_area_km2": 6.181228730029241,
+      "max_depth_m": 13.29918551063588,
+      "max_velocity_mps": 82.50618820880815
+    },
+    {
+      "minute": 40,
+      "flooded_area_km2": 6.318408868292409,
+      "max_depth_m": 14.161879016253465,
+      "max_velocity_mps": 89.25547666573624
+    },
+    {
+      "minute": 45,
+      "flooded_area_km2": 6.418586469260907,
+      "max_depth_m": 15.008942447770778,
+      "max_velocity_mps": 95.95429845517668
+    },
+    {
+      "minute": 50,
+      "flooded_area_km2": 6.496201547488753,
+      "max_depth_m": 15.845455431423261,
+      "max_velocity_mps": 102.63598594126091
+    },
+    {
+      "minute": 55,
+      "flooded_area_km2": 6.579231631174355,
+      "max_depth_m": 16.671891083504647,
+      "max_velocity_mps": 109.29883681978247
+    },
+    {
+      "minute": 60,
+      "flooded_area_km2": 6.645114197577061,
+      "max_depth_m": 17.488874839018877,
+      "max_velocity_mps": 115.94306919203417
+    }
+  ]
+}

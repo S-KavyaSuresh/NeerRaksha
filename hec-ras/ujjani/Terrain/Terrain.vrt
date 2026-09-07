@@ -1,0 +1,32 @@
+<VRTDataset rasterXSize="2151" rasterYSize="753">
+  <SRS dataAxisToSRSAxisMapping="1,2">PROJCS["WGS 84 / UTM zone 43N",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",75],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","32643"]]</SRS>
+  <GeoTransform>  5.0528768744929752e+05,  2.9527321131819647e+01,  0.0000000000000000e+00,  2.0124353203632766e+06,  0.0000000000000000e+00, -2.9527321131819647e+01</GeoTransform>
+  <VRTRasterBand dataType="Float32" band="1">
+    <Metadata>
+      <MDI key="STATISTICS_MAXIMUM">939.8515625</MDI>
+      <MDI key="STATISTICS_MEAN">436.58451890887</MDI>
+      <MDI key="STATISTICS_MINIMUM">180.765625</MDI>
+      <MDI key="STATISTICS_STDDEV">35.049209679716</MDI>
+    </Metadata>
+    <NoDataValue>-9999</NoDataValue>
+    <ColorInterp>Gray</ColorInterp>
+    <Histograms>
+      <HistItem>
+        <HistMin>180.765625</HistMin>
+        <HistMax>939.8515625</HistMax>
+        <BucketCount>256</BucketCount>
+        <IncludeOutOfRange>1</IncludeOutOfRange>
+        <Approximate>0</Approximate>
+        <HistCounts>4|5|6|11|18|19|38|43|19|21|30|25|42|30|25|26|21|41|33|36|29|30|39|39|33|36|46|36|43|53|82|99|115|154|189|226|349|424|442|470|753|961|887|694|658|516|461|405|430|430|448|511|511|529|538|555|574|617|791|879|964|1008|1106|1184|1214|1011|998|1085|1420|2370|5599|13436|23042|35693|40936|45509|49138|50867|58243|61541|66606|75737|77124|74133|68304|66419|67685|67103|62711|60736|56494|52702|51083|47470|44750|41382|32808|27756|25942|23108|19903|19058|17574|14005|10485|7996|3731|2040|857|789|667|751|791|770|876|782|382|26|28|30|30|44|36|42|38|36|32|27|33|31|41|48|53|41|43|25|35|27|41|26|45|44|54|48|53|45|49|59|50|70|69|56|62|55|57|56|64|82|104|104|82|78|60|66|73|67|78|76|88|93|99|90|88|68|61|58|47|65|70|79|63|69|69|48|43|43|43|45|59|75|120|119|104|71|61|54|50|61|69|57|53|77|74|73|60|63|75|83|65|87|90|74|93|70|61|49|39|33|36|44|38|48|38|45|31|31|26|32|21|41|43|52|43|45|38|46|43|44|27|47|53|65|109|92|59|36|27|30|31|61|51|59|30|18|12|6</HistCounts>
+      </HistItem>
+    </Histograms>
+    <ComplexSource>
+      <SourceFilename relativeToVRT="1">Terrain.ujjani_dem_cropped.tif</SourceFilename>
+      <SourceBand>1</SourceBand>
+      <SourceProperties RasterXSize="2151" RasterYSize="753" DataType="Float32" BlockXSize="256" BlockYSize="256" />
+      <SrcRect xOff="0" yOff="0" xSize="2151" ySize="753" />
+      <DstRect xOff="0" yOff="0" xSize="2151" ySize="753" />
+      <NODATA>-9999</NODATA>
+    </ComplexSource>
+  </VRTRasterBand>
+</VRTDataset>

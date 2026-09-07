@@ -10,7 +10,7 @@ export function useIntelligence() {
     setData(previous => ({ ...previous, loading: true }))
     fetchDashboard(controller.signal).then(result => setData({ ...result, loading: false, fallback: false, error: '' })).catch(error => {
       if (controller.signal.aborted) return
-      setData({ summary: sampleSummary, timeline: sampleTimeline, loading: false, fallback: true, error: error.response?.data?.error?.message || 'API unavailable. Displaying local synthetic simulation data.' })
+      setData({ summary: sampleSummary, timeline: sampleTimeline, loading: false, fallback: true, error: error.response?.data?.error?.message || 'API unavailable. Using local prototype dashboard metrics.' })
     })
     return () => controller.abort()
   }, [attempt])

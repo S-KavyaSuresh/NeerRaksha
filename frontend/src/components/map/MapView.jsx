@@ -50,6 +50,7 @@ import {
   getFloodVisual,
   depthBands
 } from './floodVisual.js'
+import { ujjaniFrame, depthPalette } from '../../data/ujjaniModel.js'
 
 
 const INITIAL_ORIENTATION = {
@@ -272,171 +273,8 @@ function displayMinuteFor(value) {
  *
  * It is NOT HEC-RAS / Delft3D / SPH hydraulic output.
  */
-function buildUjjaniFloodRing(
-  studyCase,
-  minute
-) {
-  if (
-    !studyCase ||
-    studyCase.case_id !== 'ujjani'
-  ) {
-    return []
-  }
-
-  const currentMinute = Number(minute)
-
-  if (
-    !Number.isFinite(currentMinute) ||
-    currentMinute <= 0
-  ) {
-    return []
-  }
-
-  const line =
-    studyCase
-      ?.spatial
-      ?.river_centerline
-      ?.features
-      ?.[0]
-      ?.geometry
-      ?.coordinates
-
-  const path = normalizePath(line)
-
-  if (path.length < 2) {
-    return []
-  }
-
-  const timeline =
-    Array.isArray(studyCase.timeline)
-      ? studyCase.timeline
-      : []
-
-  let row = null
-
-  if (timeline.length > 0) {
-    row = timeline.reduce(
-      (best, item) => {
-        if (!best) {
-          return item
-        }
-
-        const itemTime =
-          Number(item.time_min)
-
-        const bestTime =
-          Number(best.time_min)
-
-        if (!Number.isFinite(itemTime)) {
-          return best
-        }
-
-        if (!Number.isFinite(bestTime)) {
-          return item
-        }
-
-        return Math.abs(
-          itemTime -
-          currentMinute
-        ) <
-        Math.abs(
-          bestTime -
-          currentMinute
-        )
-          ? item
-          : best
-      },
-      null
-    )
-  }
-
-  const progress = Math.max(
-    0,
-    Math.min(
-      1,
-      currentMinute / 60
-    )
-  )
-
-  const count = Math.max(
-    2,
-    Math.min(
-      path.length,
-      Math.ceil(
-        path.length *
-        progress
-      )
-    )
-  )
-
-  const part = path.slice(
-    0,
-    count
-  )
-
-  /*
-   * CRITICAL GUARD.
-   *
-   * The previous code crashed here because it attempted:
-   *
-   * part[0][0]
-   *
-   * while part was empty.
-   */
-  if (part.length < 2) {
-    return []
-  }
-
-  const discharge =
-    Number(
-      row?.breach_discharge_m3s
-    ) || 0
-
-  const normalizedDischarge =
-    Math.max(
-      0,
-      Math.min(
-        1,
-        discharge / 18010
-      )
-    )
-
-  const width =
-    0.002 +
-    normalizedDischarge *
-    0.014
-
-  const left = part.map(
-    ([lon, lat]) => [
-      lon - width,
-      lat
-    ]
-  )
-
-  const right = part
-    .slice()
-    .reverse()
-    .map(
-      ([lon, lat]) => [
-        lon + width,
-        lat
-      ]
-    )
-
-  if (
-    left.length < 2 ||
-    right.length < 2
-  ) {
-    return []
-  }
-
-  const ring = [
-    ...left,
-    ...right,
-    left[0]
-  ]
-
-  return ring
+function buildUjjaniFloodRing(studyCase, minute, scenario) {
+  return ujjaniFrame(studyCase, minute, scenario).ring
 }
 
 
@@ -461,8 +299,7 @@ export default function MapView() {
   const studyEntities =
     useRef([])
 
-  const ujjaniFloodRef =
-    useRef(null)
+  const ujjaniFloodRefs = useRef(new Map())
 
   /*
    * Old prototype flood frames are preserved for legacy cases.
@@ -509,7 +346,8 @@ export default function MapView() {
     selected,
     select,
     focusRequest,
-    selectedStudyCase
+    selectedStudyCase,
+    scenario
   } = useDashboard()
 
 
@@ -539,11 +377,13 @@ export default function MapView() {
       () =>
         buildUjjaniFloodRing(
           selectedStudyCase,
-          visualMinute
+          visualMinute,
+          scenario
         ),
       [
         selectedStudyCase,
-        visualMinute
+        visualMinute,
+        scenario
       ]
     )
 
@@ -592,7 +432,7 @@ export default function MapView() {
         selectedStudyCase
           ?.case_id ===
         'ujjani'
-          ? false
+          ? visualMinute > 0
           : frame.ring.length >= 4
 
       return {
@@ -647,8 +487,13 @@ export default function MapView() {
     ])
 
 
+  const activeFrame = selectedStudyCase?.case_id === 'ujjani'
+    ? ujjaniFrame(selectedStudyCase, visualMinute, scenario)
+    : frame
+
+
   const selectedBand =
-    frame.bands.find(
+    activeFrame.bands.find(
       band =>
         band.id ===
         selected?.bandId
@@ -659,7 +504,7 @@ export default function MapView() {
     selected?.type ===
     'flood'
       ? {
-          ...frame,
+          ...activeFrame,
           type: 'flood'
         }
       : selected
@@ -1112,8 +957,7 @@ export default function MapView() {
     facilityEntities.current =
       []
 
-    ujjaniFloodRef.current =
-      null
+    ujjaniFloodRefs.current = new Map()
 
 
     /*
@@ -1953,50 +1797,17 @@ export default function MapView() {
           )
           .filter(Boolean)
 
-
-      /*
-       * UJJANI SYNTHETIC FLOOD ENTITY
-       *
-       * Created once.
-       *
-       * At T+0 it remains hidden.
-       *
-       * IMPORTANT:
-       * We do NOT initialize it with PolygonHierarchy([]).
-       * Empty polygon hierarchy can cause Cesium errors.
-       */
-      const flood =
-        viewer.entities.add({
-          id:
-            'ujjani-synthetic-flood',
-
-          name:
-            'Synthetic breach inundation',
-
-          show:
-            false
+      /* Persistent Ujjani depth-band entities. They are updated in-place by the timeline. */
+      for (const band of depthPalette) {
+        const flood = viewer.entities.add({
+          id: `ujjani-flood-${band.id}`,
+          name: `Ujjani flood depth · ${band.label}`,
+          show: false
         })
-
-
-      metadata.current.set(
-        flood.id,
-        {
-          type:
-            'flood',
-
-          name:
-            'Synthetic Ujjani breach inundation'
-        }
-      )
-
-
-      ujjaniFloodRef.current =
-        flood
-
-
-      studyEntities.current.push(
-        flood
-      )
+        metadata.current.set(flood.id, { type:'flood', bandId:band.id, name:`Water depth ${band.label}` })
+        ujjaniFloodRefs.current.set(band.id, flood)
+        studyEntities.current.push(flood)
+      }
 
     } else {
 
@@ -2079,11 +1890,10 @@ export default function MapView() {
           Cartesian3.fromDegrees(
             longitude,
             latitude,
-            30000
+            12000
           ),
 
-        orientation:
-          INITIAL_ORIENTATION,
+        orientation: { heading:0, pitch:CesiumMath.toRadians(-90), roll:0 },
 
         duration:
           0.8
@@ -2109,135 +1919,37 @@ export default function MapView() {
    * ----------------------------------------------------------
    * UJJANI FLOOD UPDATE
    * ----------------------------------------------------------
+   * Scenario-specific, continuous approximate routing along the real Bhima reference.
+   * Entities persist for the life of the selected study case, so playback cannot blink.
    */
   useEffect(() => {
-    const viewer =
-      viewerRef.current
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed() || selectedStudyCase?.case_id !== 'ujjani') return
 
-    const flood =
-      ujjaniFloodRef.current
+    const model = ujjaniFrame(selectedStudyCase, minute, scenario)
+    const bandById = new Map(model.bands.map(band => [band.id, band]))
 
-
-    if (
-      !viewer ||
-      viewer.isDestroyed() ||
-      !flood ||
-      selectedStudyCase
-        ?.case_id !==
-      'ujjani'
-    ) {
-      return
-    }
-
-    /* Synthetic Ujjani inundation is hidden until it is spatially aligned. */
-    flood.show = false
-    return
-
-
-    const ring =
-      buildUjjaniFloodRing(
-        selectedStudyCase,
-        minute
-      )
-
-
-    /*
-     * T+0 OR INVALID RIVER.
-     *
-     * Hide flood.
-     *
-     * Never assign an empty PolygonHierarchy.
-     */
-    if (
-      !layers.flood ||
-      ring.length < 4
-    ) {
-      flood.show =
-        false
-
-      return
-    }
-
-
-    const positions =
-      toPolygonPositions(
-        ring,
-        35
-      )
-
-
-    if (
-      !Array.isArray(
-        positions
-      ) ||
-      positions.length < 3
-    ) {
-      flood.show =
-        false
-
-      return
-    }
-
-
-    try {
-      /*
-       * Create polygon graphics only when valid geometry exists.
-       */
-      if (!flood.polygon) {
-        flood.polygon = {
-          hierarchy:
-            new PolygonHierarchy(
-              positions
-            ),
-
-          perPositionHeight:
-            true,
-
-          material:
-            colorMaterial(
-              '#368cf2',
-              0.42
-            ),
-
-          outline:
-            false
-        }
-
-      } else {
-        flood.polygon.hierarchy =
-          new PolygonHierarchy(
-            positions
-          )
+    for (const paletteBand of depthPalette) {
+      const entity = ujjaniFloodRefs.current.get(paletteBand.id)
+      if (!entity) continue
+      const band = bandById.get(paletteBand.id)
+      if (!layers.flood || !band?.ring?.length) { entity.show = false; continue }
+      const positions = toPolygonPositions(band.ring, 34 + depthPalette.findIndex(item => item.id === paletteBand.id) * 2)
+      if (positions.length < 3) { entity.show = false; continue }
+      try {
+        if (!entity.polygon) entity.polygon = {}
+        entity.polygon.hierarchy = new PolygonHierarchy(positions)
+        entity.polygon.perPositionHeight = true
+        entity.polygon.material = colorMaterial(paletteBand.color, paletteBand.id === 'shallow' ? 0.42 : 0.52)
+        entity.polygon.outline = false
+        entity.show = true
+      } catch (error) {
+        console.warn('Ujjani depth band update skipped', paletteBand.id, error)
+        entity.show = false
       }
-
-
-      flood.show =
-        true
-
-      setMapError('')
-
-    } catch (error) {
-      console.error(
-        'Ujjani flood update failed:',
-        error
-      )
-
-      flood.show =
-        false
-
-      /*
-       * Do NOT crash MapView.
-       */
-      setMapError(
-        'Flood visualization temporarily unavailable.'
-      )
     }
-
-  }, [
-    minute,
-    layers.flood,
-    selectedStudyCase
-  ])
+    setMapError('')
+  }, [minute, layers.flood, selectedStudyCase, scenario])
 
 
   /*
@@ -2524,9 +2236,8 @@ export default function MapView() {
         ring =
           buildUjjaniFloodRing(
             selectedStudyCase,
-            useDashboard
-              .getState()
-              .minute
+            useDashboard.getState().minute,
+            useDashboard.getState().scenario
           )
 
       } else {
@@ -2714,11 +2425,10 @@ export default function MapView() {
               .fromDegrees(
                 longitude,
                 latitude,
-                30000
+                12000
               ),
 
-          orientation:
-            INITIAL_ORIENTATION,
+          orientation: { heading:0, pitch:CesiumMath.toRadians(-90), roll:0 },
 
           duration:
             0.8
@@ -2852,8 +2562,8 @@ export default function MapView() {
 
           <span>
             {selectedStudyCase?.case_id === 'ujjani'
-              ? 'HYDRAULIC INUNDATION PENDING'
-              : 'SYNTHETIC SIMULATION DATA · not hydraulic output'}
+              ? 'AUTOMATED APPROXIMATE 2D FLOOD-ROUTING PROTOTYPE'
+              : 'APPROXIMATE FLOOD-ROUTING MODEL'}
           </span>
 
         </div>
@@ -2917,7 +2627,7 @@ export default function MapView() {
                       'terrain'
 
                       ? layers.terrain
-                        ? 'DEM pending'
+                        ? '30 m DEM · simulation input'
                         : 'Terrain off'
 
                       : layers.satellite
@@ -2982,7 +2692,7 @@ export default function MapView() {
       <div className="active-frame glass">
 
         T+
-        {frame.minute
+        {activeFrame.minute
           .toFixed(1)
           .padStart(
             4,
@@ -2992,17 +2702,17 @@ export default function MapView() {
 
         <span>
           0–
-          {frame.depth
+          {activeFrame.depth
             .toFixed(1)}
           {' '}
-          m · {frame.risk}
+          m · {activeFrame.risk}
         </span>
 
 
         <small>
           {selectedStudyCase?.case_id === 'ujjani'
-            ? 'HYDRAULIC INUNDATION PENDING'
-            : 'SYNTHETIC SIMULATION DATA'}
+            ? 'AUTOMATED APPROXIMATE 2D FLOOD-ROUTING PROTOTYPE'
+            : 'APPROXIMATE FLOOD-ROUTING MODEL'}
         </small>
 
       </div>
@@ -3052,7 +2762,7 @@ export default function MapView() {
             {detail.type ===
             'flood'
 
-              ? `Flood extent · T+${frame.minute.toFixed(1)} min`
+              ? `Flood extent · T+${activeFrame.minute.toFixed(1)} min`
 
               : detail.name ||
                 detail.building_type ||
@@ -3070,7 +2780,7 @@ export default function MapView() {
 
               {' · '}
 
-              {frame.risk}
+              {activeFrame.risk}
             </p>
           )}
 
@@ -3097,7 +2807,7 @@ export default function MapView() {
 
 
           <small>
-            SYNTHETIC SIMULATION DATA · not validated hydraulic output.
+            Approximate 2D flood-routing model · not validated operational hydraulic output.
           </small>
 
         </div>
@@ -3110,7 +2820,7 @@ export default function MapView() {
           WATER DEPTH{' '}
 
           <small>
-            synthetic
+            approximate model
           </small>
         </span>
 
@@ -3196,7 +2906,7 @@ export default function MapView() {
 
 
         <span>
-          DEM terrain pending
+          30 m DEM · simulation input
         </span>
 
       </div>

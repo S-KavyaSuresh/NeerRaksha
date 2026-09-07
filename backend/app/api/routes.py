@@ -1,4 +1,6 @@
 from uuid import UUID
+import json
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -9,6 +11,7 @@ from app.services.sample import SIMULATION_ID, TIMELINE
 from app.data.repository import repository
 
 router = APIRouter(prefix="/api")
+UJJANI_RESULTS = Path(__file__).resolve().parents[3] / "results" / "ujjani"
 
 
 def require_record(session, model, identifier):
@@ -26,6 +29,30 @@ def health():
 @router.get("/study-cases")
 def study_cases():
     return repository.list_study_cases()
+
+
+@router.get("/study-cases/ujjani/simulation/summary")
+def ujjani_simulation_summary():
+    path = UJJANI_RESULTS / "summary.json"
+    if not path.exists():
+        raise HTTPException(404, detail={"code": "SIMULATION_NOT_RUN", "message": "Run python -m simulation.run_ujjani first."})
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@router.get("/study-cases/ujjani/simulation/timeline")
+def ujjani_simulation_timeline():
+    summary = UJJANI_RESULTS / "summary.json"
+    if not summary.exists():
+        raise HTTPException(404, detail={"code": "SIMULATION_NOT_RUN", "message": "Simulation outputs are unavailable."})
+    return json.loads(summary.read_text(encoding="utf-8")).get("timeline", [])
+
+
+@router.get("/study-cases/ujjani/simulation/timeline/{minute}")
+def ujjani_simulation_frame(minute: int):
+    path = UJJANI_RESULTS / "timeline" / f"t{minute:03d}.geojson"
+    if not path.exists():
+        raise HTTPException(404, detail={"code": "FRAME_NOT_FOUND", "message": "Simulation frame is unavailable."})
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 @router.get("/study-cases/{case_id}")

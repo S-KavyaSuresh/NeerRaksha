@@ -1,12 +1,12 @@
 export const scenarioPresets = {
-  partial:{ preset:'partial',name:'Partial Breach',breach_type:'partial',breach_width_m:80,breach_time_minutes:45,initial_water_level_m:192,simulation_duration_minutes:60 },
-  major:{ preset:'major',name:'Major Breach',breach_type:'major',breach_width_m:250,breach_time_minutes:30,initial_water_level_m:192,simulation_duration_minutes:60 },
-  custom:{ preset:'custom',name:'Custom Simulation Scenario',breach_type:'major',breach_width_m:150,breach_time_minutes:35,initial_water_level_m:190,simulation_duration_minutes:60 }
+  partial:{ preset:'partial',name:'Partial Breach',breach_type:'partial',breach_width_m:80,breach_time_minutes:45,initial_water_level_m:496.83,simulation_duration_minutes:60 },
+  major:{ preset:'major',name:'Major Breach',breach_type:'major',breach_width_m:250,breach_time_minutes:20,initial_water_level_m:497.58,simulation_duration_minutes:60 },
+  custom:{ preset:'custom',name:'Custom Simulation Scenario',breach_type:'major',breach_width_m:150,breach_time_minutes:30,initial_water_level_m:496.83,simulation_duration_minutes:60 }
 }
 export const scenarioFields = [
   { key:'breach_width_m',label:'Breach width (m)',min:10,max:1000 },
   { key:'breach_time_minutes',label:'Breach formation time (min)',min:1,max:180 },
-  { key:'initial_water_level_m',label:'Initial reservoir water level (m)',min:100,max:220 },
+  { key:'initial_water_level_m',label:'Initial reservoir water level (m)',min:450,max:510 },
   { key:'simulation_duration_minutes',label:'Simulation duration (min)',min:60,max:180 }
 ]
 

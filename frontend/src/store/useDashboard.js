@@ -2,9 +2,20 @@ import { create } from 'zustand'
 import { readSavedScenario, validateScenario, normalizedScenario } from '../data/scenarios.js'
 import { idleRun, advanceRun } from '../data/pipeline.js'
 
+
+const FALLBACK_UJJANI = {
+  case_id:'ujjani', dam_name:'Ujjani', river_name:'Bhima', state:'Maharashtra',
+  latitude:18.075, longitude:75.120278,
+  // Deliberately no invented fallback river geometry. The map waits for the real
+  // backend river instead of drawing a false straight flood corridor.
+  spatial:{ real_river:{ type:'FeatureCollection', features:[] }, real_roads:{type:'FeatureCollection',features:[]}, real_facilities:{type:'FeatureCollection',features:[]} },
+  exposure:{roads:[],facilities:[],buildings:[],settlements:[]}
+}
+
+
 export const useDashboard = create((set,get) => ({
-  minute: 30, playing: false, speed: 1, emergency: false, collapsed: true, selected: null,
-  studyCases: [], selectedStudyCaseId: '', selectedStudyCase: null,
+  minute: 0, playing: false, speed: 1, emergency: false, collapsed: true, selected: null,
+  studyCases: [FALLBACK_UJJANI], selectedStudyCaseId: 'ujjani', selectedStudyCase: FALLBACK_UJJANI,
   previousLayers: null, focusRequest: 0,
   scenario:readSavedScenario(),
   run:idleRun(),
@@ -43,8 +54,8 @@ export const useDashboard = create((set,get) => ({
   toggleCollapsed: () => set(state => ({ collapsed: !state.collapsed })),
   select: selected => set({ selected }),
   setStudyCases: studyCases => set(state => {
-    const selectedStudyCase = studyCases.find(caseItem => caseItem.case_id === state.selectedStudyCaseId) || studyCases[0] || null
-    return { studyCases, selectedStudyCaseId: selectedStudyCase?.case_id || '', selectedStudyCase }
+    const ujjani = (studyCases || []).find(caseItem => caseItem.case_id === 'ujjani') || state.selectedStudyCase || FALLBACK_UJJANI
+    return { studyCases:[ujjani], selectedStudyCaseId:'ujjani', selectedStudyCase:ujjani }
   }),
   selectStudyCase: selectedStudyCaseId => set(state => {
     const selectedStudyCase = state.studyCases.find(caseItem => caseItem.case_id === selectedStudyCaseId)
