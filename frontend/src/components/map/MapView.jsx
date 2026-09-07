@@ -51,6 +51,12 @@ import {
   depthBands
 } from './floodVisual.js'
 import { ujjaniFrame, depthPalette } from '../../data/ujjaniModel.js'
+import {
+  buildFrameDataSource,
+  nearestFrameMinute,
+  frameFeatureCount,
+  featureCollectionBounds
+} from './backendFlood.js'
 
 
 const INITIAL_ORIENTATION = {
@@ -301,6 +307,10 @@ export default function MapView() {
 
   const ujjaniFloodRefs = useRef(new Map())
 
+  /* Backend simulation flood frames (real time-dependent GeoJSON from the API). */
+  const backendDsRef = useRef(new Map())
+  const [backendTick, setBackendTick] = useState(0)
+
   /*
    * Old prototype flood frames are preserved for legacy cases.
    *
@@ -347,8 +357,24 @@ export default function MapView() {
     select,
     focusRequest,
     selectedStudyCase,
-    scenario
+    scenario,
+    backend
   } = useDashboard()
+
+  const backendFloodActive =
+    selectedStudyCase?.case_id === 'ujjani' &&
+    backend?.status === 'completed' &&
+    backend?.frames &&
+    Object.keys(backend.frames).length > 0
+
+  const backendPoint = (() => {
+    if (!backendFloodActive || !Array.isArray(backend.timeline) || !backend.timeline.length) return null
+    let pick = null
+    for (const point of backend.timeline) {
+      if (Number(point.minute) <= Number(minute || 0)) pick = point
+    }
+    return pick || backend.timeline[0]
+  })()
 
 
   const visualMinute =
@@ -556,6 +582,8 @@ export default function MapView() {
 
       viewerRef.current =
         viewer
+
+      if (typeof window !== 'undefined') window.__NR_VIEWER__ = viewer
 
 
       viewer.scene.globe.baseColor =
@@ -1933,7 +1961,8 @@ export default function MapView() {
       const entity = ujjaniFloodRefs.current.get(paletteBand.id)
       if (!entity) continue
       const band = bandById.get(paletteBand.id)
-      if (!layers.flood || !band?.ring?.length) { entity.show = false; continue }
+      // Real backend flood frames take over once the simulation API has returned.
+      if (backendFloodActive || !layers.flood || !band?.ring?.length) { entity.show = false; continue }
       const positions = toPolygonPositions(band.ring, 34 + depthPalette.findIndex(item => item.id === paletteBand.id) * 2)
       if (positions.length < 3) { entity.show = false; continue }
       try {
@@ -1949,7 +1978,93 @@ export default function MapView() {
       }
     }
     setMapError('')
-  }, [minute, layers.flood, selectedStudyCase, scenario])
+  }, [minute, layers.flood, selectedStudyCase, scenario, backendFloodActive])
+
+
+  /*
+   * ----------------------------------------------------------
+   * BACKEND SIMULATION FLOOD FRAMES
+   * ----------------------------------------------------------
+   * Time-dependent flood GeoJSON from POST /api/simulations. Each available
+   * minute becomes a hidden GeoJsonDataSource; the timeline effect below shows
+   * the frame matching the current minute so the water visibly expands/contracts.
+   */
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return undefined
+
+    backendDsRef.current.forEach(source => {
+      try { viewer.dataSources.remove(source, true) } catch { /* already gone */ }
+    })
+    backendDsRef.current = new Map()
+    setBackendTick(tick => tick + 1)
+
+    if (!backendFloodActive) return undefined
+
+    let cancelled = false
+    const frames = backend.frames
+    ;(async () => {
+      const minutes = Object.keys(frames).map(Number).sort((a, b) => a - b)
+      for (const frameMinute of minutes) {
+        if (cancelled) return
+        try {
+          const source = await buildFrameDataSource(frameMinute, frames[frameMinute])
+          if (cancelled) { try { source.entities.removeAll() } catch { /* noop */ } return }
+          await viewer.dataSources.add(source)
+          backendDsRef.current.set(frameMinute, source)
+        } catch (error) {
+          console.warn('Backend flood frame failed', frameMinute, error)
+        }
+      }
+      if (!cancelled) setBackendTick(tick => tick + 1)
+    })()
+
+    return () => { cancelled = true }
+  }, [backendFloodActive, backend.frames])
+
+
+  /* Show the backend frame matching the current timeline minute. */
+  useEffect(() => {
+    const sources = backendDsRef.current
+    if (!sources.size) return
+    const available = [...sources.keys()]
+    const target = layers.flood ? nearestFrameMinute(available, minute) : null
+    sources.forEach((source, frameMinute) => { source.show = frameMinute === target })
+    const viewer = viewerRef.current
+    if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender?.()
+  }, [minute, layers.flood, backendTick])
+
+
+  /* Fly to the modelled flood extent once, when a new backend run's frames arrive. */
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed() || !backendFloodActive) return
+    const minutes = Object.keys(backend.frames).map(Number).sort((a, b) => b - a)
+    let bounds = null
+    for (const frameMinute of minutes) {
+      bounds = featureCollectionBounds(backend.frames[frameMinute])
+      if (bounds) break
+    }
+    if (!bounds) return
+    const [west, south, east, north] = bounds
+    const pad = 0.01
+    const handle = requestAnimationFrame(() => {
+      try {
+        const sphere = BoundingSphere.fromPoints(Cartesian3.fromDegreesArray([
+          west - pad, south - pad, east + pad, south - pad,
+          east + pad, north + pad, west - pad, north + pad
+        ]))
+        viewer.camera.cancelFlight()
+        viewer.camera.flyToBoundingSphere(sphere, {
+          duration: 1.2,
+          offset: new HeadingPitchRange(0, CesiumMath.toRadians(-78), Math.max(sphere.radius * 2.4, 6000))
+        })
+      } catch (error) {
+        console.warn('Flood auto-fly failed', error)
+      }
+    })
+    return () => cancelAnimationFrame(handle)
+  }, [backendFloodActive, backend.id])
 
 
   /*
@@ -2228,7 +2343,27 @@ export default function MapView() {
       let ring = []
 
 
+      const liveBackend = useDashboard.getState().backend
       if (
+        liveBackend?.status === 'completed' &&
+        liveBackend.frames &&
+        Object.keys(liveBackend.frames).length
+      ) {
+        const orderedMinutes = Object.keys(liveBackend.frames).map(Number).sort((a, b) => b - a)
+        for (const frameMinute of orderedMinutes) {
+          const bounds = featureCollectionBounds(liveBackend.frames[frameMinute])
+          if (bounds) {
+            const [w, s, e, n] = bounds
+            ring = [[w, s], [e, s], [e, n], [w, n], [w, s]]
+            break
+          }
+        }
+      }
+
+
+      if (ring.length >= 3) {
+        // backend flood bounds already resolved
+      } else if (
         selectedStudyCase
           ?.case_id ===
         'ujjani'
@@ -2692,7 +2827,7 @@ export default function MapView() {
       <div className="active-frame glass">
 
         T+
-        {activeFrame.minute
+        {(backendPoint ? Number(minute || 0) : activeFrame.minute)
           .toFixed(1)
           .padStart(
             4,
@@ -2701,18 +2836,18 @@ export default function MapView() {
 
 
         <span>
-          0–
-          {activeFrame.depth
-            .toFixed(1)}
-          {' '}
-          m · {activeFrame.risk}
+          {backendPoint
+            ? `max ${Number(backendPoint.max_depth_m || 0).toFixed(1)} m · ${Number(backendPoint.flooded_area_km2 || 0).toFixed(2)} km²`
+            : `0–${activeFrame.depth.toFixed(1)} m · ${activeFrame.risk}`}
         </span>
 
 
         <small>
-          {selectedStudyCase?.case_id === 'ujjani'
-            ? 'AUTOMATED APPROXIMATE 2D FLOOD-ROUTING PROTOTYPE'
-            : 'APPROXIMATE FLOOD-ROUTING MODEL'}
+          {backendPoint
+            ? `${(backend?.engineLabel || 'BACKEND SIMULATION').toUpperCase()} · ${(backend?.dataClass || 'MODEL OUTPUT')}`
+            : selectedStudyCase?.case_id === 'ujjani'
+              ? 'AUTOMATED APPROXIMATE 2D FLOOD-ROUTING PROTOTYPE'
+              : 'APPROXIMATE FLOOD-ROUTING MODEL'}
         </small>
 
       </div>

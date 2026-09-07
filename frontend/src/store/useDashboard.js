@@ -13,8 +13,20 @@ const FALLBACK_UJJANI = {
 }
 
 
+export const IDLE_BACKEND = {
+  id:null, status:'idle', progress:0, message:'', engineLabel:null, dataClass:null,
+  provenance:null, fallbackUsed:false, availableFrames:[], frames:{}, summary:null,
+  timeline:[], error:''
+}
+
 export const useDashboard = create((set,get) => ({
   minute: 0, playing: false, speed: 1, emergency: false, collapsed: true, selected: null,
+  backend: { ...IDLE_BACKEND },
+  runNonce: 0,
+  simEngine: 'approximate', // 'approximate' | 'delft3d' | 'sph'
+  setSimEngine: simEngine => set({ simEngine: ['approximate', 'delft3d', 'sph'].includes(simEngine) ? simEngine : 'approximate' }),
+  setBackend: partial => set(state => ({ backend: { ...state.backend, ...partial } })),
+  resetBackend: () => set({ backend: { ...IDLE_BACKEND } }),
   studyCases: [FALLBACK_UJJANI], selectedStudyCaseId: 'ujjani', selectedStudyCase: FALLBACK_UJJANI,
   previousLayers: null, focusRequest: 0,
   scenario:readSavedScenario(),
@@ -23,7 +35,7 @@ export const useDashboard = create((set,get) => ({
     const scenario=get().scenario
     const errors=validateScenario(scenario)
     if(Object.keys(errors).length) return {ok:false,errors}
-    set({run:{...idleRun(),status:'running',scenario:{...scenario}},minute:0,playing:false})
+    set({run:{...idleRun(),status:'running',scenario:{...scenario}},minute:0,playing:false,runNonce:get().runNonce+1,backend:{...IDLE_BACKEND,status:'queued',message:'Submitting scenario to simulation API'}})
     return {ok:true}
   },
   advanceRun:seconds=>set(state=>{
@@ -31,8 +43,8 @@ export const useDashboard = create((set,get) => ({
     if(run===state.run) return state
     return run.status==='completed'?{run,minute:0,playing:true}:{run}
   }),
-  cancelRun:()=>set(state=>state.run.status==='running'?{run:{...state.run,status:'cancelled'},playing:false}:state),
-  resetRun:()=>set({run:idleRun(),minute:0,playing:false}),
+  cancelRun:()=>set(state=>state.run.status==='running'?{run:{...state.run,status:'cancelled'},playing:false,backend:{...state.backend,status:state.backend.status==='completed'?'completed':'cancelled'}}:state),
+  resetRun:()=>set({run:idleRun(),minute:0,playing:false,backend:{...IDLE_BACKEND}}),
   saveScenario:scenario=>{
     const errors=validateScenario(scenario)
     if(Object.keys(errors).length) return {ok:false,errors}
@@ -67,3 +79,5 @@ export const useDashboard = create((set,get) => ({
     studyCases: state.studyCases.map(caseItem => caseItem.case_id === selectedStudyCase.case_id ? { ...caseItem, ...selectedStudyCase } : caseItem)
   } : state)
 }))
+
+if (typeof window !== 'undefined') window.__NR_STORE__ = useDashboard

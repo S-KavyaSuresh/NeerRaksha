@@ -92,17 +92,17 @@ def scenarios(session: Session = Depends(get_session)):
     return session.scalars(select(Scenario).order_by(Scenario.name)).all()
 
 
-@router.get("/scenarios/{scenario_id}", response_model=ScenarioOut)
+@router.get("/scenarios/{scenario_id:uuid}", response_model=ScenarioOut)
 def scenario(scenario_id: UUID, session: Session = Depends(get_session)):
     return require_record(session, Scenario, scenario_id)
 
 
-@router.get("/simulations/{simulation_id}", response_model=SimulationOut)
+@router.get("/simulations/{simulation_id:uuid}", response_model=SimulationOut)
 def simulation(simulation_id: UUID, session: Session = Depends(get_session)):
     return require_record(session, SimulationRun, simulation_id)
 
 
-@router.get("/simulations/{simulation_id}/summary", response_model=ImpactOut)
+@router.get("/simulations/{simulation_id:uuid}/summary", response_model=ImpactOut)
 def summary(simulation_id: UUID, session: Session = Depends(get_session)):
     require_record(session, SimulationRun, simulation_id)
     record = session.scalar(select(ImpactSummary).where(ImpactSummary.simulation_run_id == simulation_id))
@@ -111,7 +111,7 @@ def summary(simulation_id: UUID, session: Session = Depends(get_session)):
     return record
 
 
-@router.get("/simulations/{simulation_id}/timeline", response_model=TimelineOut)
+@router.get("/simulations/{simulation_id:uuid}/timeline", response_model=TimelineOut)
 def timeline(simulation_id: UUID, session: Session = Depends(get_session)):
     require_record(session, SimulationRun, simulation_id)
     if simulation_id != SIMULATION_ID:

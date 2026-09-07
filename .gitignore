@@ -28,3 +28,10 @@ data/exports/*
 *.dbf
 *.zip
 *.sqlite*
+
+# Generated simulation engine outputs
+results/ujjani_sph/
+results/ujjani_delft3d/
+data/processed/simulations/
+results/benchmark/
+results/ujjani_scenario/

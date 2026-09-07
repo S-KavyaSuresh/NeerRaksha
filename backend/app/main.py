@@ -3,12 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from app.api.routes import router
+from app.api.simulations import router as simulations_router
+from app.api.benchmarks import router as benchmarks_router
+from app.api.scenarios_phase4 import router as scenarios_phase4_router
 from app.core.config import settings
 from app.database.session import DatabaseUnavailable
 
-app = FastAPI(title="NeerRaksha API", version="0.1.0", description="Dam-break and flood intelligence API. All simulation results are synthetic data.")
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False, allow_methods=["GET"], allow_headers=["Accept", "Content-Type"])
+app = FastAPI(title="NeerRaksha API", version="0.1.0", description="Dam-break and flood intelligence API. Simulation results are approximate MODEL OUTPUT, not validated hydraulic output.")
+app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False, allow_methods=["GET", "POST", "OPTIONS"], allow_headers=["Accept", "Content-Type"])
 app.include_router(router)
+app.include_router(simulations_router)
+app.include_router(benchmarks_router)
+app.include_router(scenarios_phase4_router)
 
 
 @app.exception_handler(DatabaseUnavailable)

@@ -78,6 +78,124 @@ Open http://localhost:5173 or http://127.0.0.1:5173. API docs: http://localhost:
 
 FastAPI starts without a database. `/api/health` remains available; database routes return structured HTTP 503 errors. The frontend then shows clearly labeled local demo data and a retry control. A working API still serves prototype sample values, not live flood intelligence.
 
+## Simulation pipeline (dam-break flood)
+
+The simulation lifecycle API is database-independent and works even when Neon is
+unavailable:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/simulations` | Create a run (`{scenario, engine}`), returns a `sim-…` id immediately |
+| GET | `/api/simulations/{id}` | Status: `queued`/`running`/`completed`/`failed`/`cancelled` + progress |
+| GET | `/api/simulations/{id}/summary` | Impact summary (population exposure is `null` + status, never fabricated) |
+| GET | `/api/simulations/{id}/timeline` | Per-minute area/depth/velocity series |
+| GET | `/api/simulations/{id}/timeline/{minute}` | Depth-banded flood GeoJSON for that minute |
+| GET | `/api/simulations/{id}/results/{layer}` | `flood_extent` GeoJSON; `max_depth`/`max_velocity`/`arrival_time` GeoTIFF |
+| GET | `/api/simulations/{id}/validation` | Sentinel-1 / GEE comparison — honest `unavailable` stub |
+
+`engine` is `approximate` (default), `delft3d`, or `sph`:
+
+- **approximate** — wraps `backend/simulation/ujjani_solver.py`. By default it serves
+  the committed pre-computed products in `results/ujjani/<scenario>/`
+  (MODEL OUTPUT, not validated). Set `NEERRAKSHA_RUN_LIVE_SOLVER=1` to run the
+  solver live (needs `scipy` + a cropped DEM).
+- **delft3d** — `backend/simulation/delft3d_engine.py` builds a small UGRID mesh
+  from a DEM (`backend/simulation/dem_to_ugrid.py`), writes an `.mdu`, runs
+  `dflowfm-cli.exe`, and post-processes the map file
+  (`backend/simulation/postprocess.py`). If the executable or a DEM is missing it
+  reports a clear error and the job falls back to the approximate engine.
+- **sph** — `backend/simulation/sph_engine.py`, a demonstration-scale particle
+  router (not a validated SPH solver). Kept separate from Delft3D output.
+
+Configurable via environment variables (all optional):
+`DELFT3D_EXECUTABLE`, `DELFT3D_REFERENCE_MESH`, `NEERRAKSHA_DEM`,
+`NEERRAKSHA_SYNTHETIC_DEM`, `NEERRAKSHA_RESULTS_ROOT`, `NEERRAKSHA_SIM_WORKDIR`,
+`NEERRAKSHA_RUN_LIVE_SOLVER`.
+
+In the UI: **Simulation → Run Simulation** posts to `/api/simulations`, polls
+status, then loads the flood timeline. Moving the timeline (0–60 min) updates the
+Cesium flood layer frame-by-frame. If the API is unreachable the app degrades to
+the local approximate preview.
+
+Two of the three engines are genuine numerical solvers:
+
+- **`sph`** — `backend/simulation/sph_solver.py` is a real 2D weakly-compressible
+  SPH dam-break (Wendland C2 kernel, Tait EOS, Monaghan artificial viscosity,
+  XSPH, CFL-limited symplectic integration, cell-linked-list neighbours; pure
+  NumPy). `sph_engine.py` runs it and reconstructs the particle field onto a
+  clearly-labelled demonstration footprint. `python -m simulation.sph_solver`
+  runs it standalone.
+- **`delft3d`** — real `dflowfm-cli.exe` with auto-generated discharge forcing on
+  the proven Ujjani mesh (Phase 1).
+
+A failed `sph` or `delft3d` run returns `status: failed` — never a silent
+fallback to the approximate engine.
+
+## Benchmark (verification, not validation)
+
+`POST /api/benchmarks/run`, `GET /api/benchmarks/{id}`,
+`GET /api/benchmarks/{id}/comparison` run an idealised dry-bed dam-break in **both**
+the SPH solver and Delft3D D-Flow FM (flat frictionless channel, `initialwaterlevel`
+polygon IC) and compare each — and each other — against the **Ritter (1892)**
+analytical shallow-water solution (`x_f(t) = x0 + 2·√(g·H0)·t`). No experimental
+reference values are used. Metrics: front-position RMSE/MAE/relative-error, depth-
+profile RMSE at a reference time, wet-region 1D IoU (threshold + grid stated), and
+front arrival time at a gauge. Artifacts land in
+`results/benchmark/{metadata.json, sph/, delft3d/, comparison/{comparison,metrics}.json}`.
+Frontend: the **Benchmark** workspace page. This is VERIFICATION / BENCHMARKING —
+**calibration and validation are explicitly NOT performed**, and no real-world
+accuracy is claimed.
+
+## Ujjani dam-break scenario (generalized, engine-independent)
+
+**Objective:** a physically-located breach at the actual Ujjani Dam
+(`18.0739 N, 75.1200 E` → EPSG:32643 `≈ 512698, 1998366`) on the real 30 m DEM,
+replacing the Phase-1 mesh-edge release. One scenario schema
+(`backend/simulation/scenario.py`) feeds all three engines:
+
+```
+scenario JSON  ->  validate + resolve (DEM sample at dam, domain check)
+   ->  breach model (linear width+depth growth over formation time)
+   ->  broad-crested weir hydrograph  Q(t) = Cw·b(t)·H(t)^1.5 , then Qpeak·exp(-(t-tf)/τ)
+        Cw = (2/3)·Cd·√(2g/3) ;  cf. Fread (1988) DAMBRK / USBR (1988), simplified
+        peak discharge is MODEL INPUT / DERIVED — NOT an observed Ujjani value
+   ->  engine adapter
+        · delft3d_scenario  : internal discharge SOURCE POINT at the dam (sorsin, sink
+                              placed outside the mesh -> inflow only) on the real
+                              Ujjani terrain mesh; postprocess -> GeoTIFF + GeoJSON
+        · sph_scenario      : genuine Phase-2 WCSPH solver on a scenario-derived
+                              REDUCED-RESOLUTION prototype (fixed 0.40 m model head;
+                              scenario sets the column aspect ratio + runout).
+                              NOT full-scale, NOT georeferenced — GeoJSON carries a
+                              flagged demonstration affine placement at the dam.
+        · approximate       : the existing demo engine, mapped from the same schema.
+   ->  common result: depth / velocity / arrival / extent + full metadata
+```
+
+Every field is classified `REAL DATA` (DEM, dam coordinate, CRS) / `MODEL INPUT`
+(breach width/depth/formation time, duration, Manning n) / `ASSUMPTION / DEMO`
+(reservoir level, assumed head, recession time, weir Cd) / `MODEL OUTPUT`. There
+are **no observations**. `validation_status` is always `NOT PERFORMED`; the run
+class is `MODEL DEMONSTRATION / SCENARIO SIMULATION`.
+
+API (async, own job runner; no silent fallback):
+`GET /api/scenarios/presets`, `POST /api/scenarios/run`,
+`GET /api/scenarios/{id}`, `/{id}/results`, `/{id}/hydrograph`,
+`/{id}/timeline/{minute}`, `/{id}/layers/{layer}`.
+Frontend: the **Ujjani Dam-Break** workspace page (engine + preset + breach
+inputs, hydrograph chart, dam location, assumptions, limitations; flood frames
+feed the existing Cesium layer + timeline).
+
+Presets (DEMO / ASSUMED numeric values — not historical events):
+
+| preset | breach width | breach depth | formation time | assumed head | Qpeak (medium DEM head) |
+|---|---|---|---|---|---|
+| small_breach | 60 m | 6 m | 3600 s | 10 m | ≈ 1 500 m³/s |
+| medium_breach | 150 m | 12 m | 1800 s | 15 m | ≈ 10 600 m³/s |
+| large_rapid_breach | 250 m | 25 m | 600 s | 25 m | ≈ 53 000 m³/s |
+
+Phase-1 Delft3D Ujjani, Phase-2 SPH, and Phase-3 benchmark paths are unchanged.
+
 ## Validation
 
 ```powershell
