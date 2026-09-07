@@ -1,18 +1,23 @@
-import { useEffect, useState } from 'react'
-import { fetchDashboard } from './api'
 import { sampleSummary, sampleTimeline } from '../data/sample'
 
+/*
+ * Since Phase 5, the Scenario Intelligence panel is driven entirely by the live
+ * `backend` store slice (a completed Delft3D / SPH / approximate run). The old
+ * dashboard fetch hit a hard-coded placeholder simulation id
+ * (`/api/simulations/44444444/...`) which only ever existed in a seeded Neon DB
+ * and otherwise produced 503/404 console noise + no useful data.
+ *
+ * This hook now just supplies the static sample shape that the header timestamp
+ * and the notifications panel still read. No network request is made, so no
+ * request for the placeholder id is issued.
+ */
 export function useIntelligence() {
-  const [attempt, setAttempt] = useState(0)
-  const [data, setData] = useState({ summary: sampleSummary, timeline: sampleTimeline, loading: true, fallback: false, error: '' })
-  useEffect(() => {
-    const controller = new AbortController()
-    setData(previous => ({ ...previous, loading: true }))
-    fetchDashboard(controller.signal).then(result => setData({ ...result, loading: false, fallback: false, error: '' })).catch(error => {
-      if (controller.signal.aborted) return
-      setData({ summary: sampleSummary, timeline: sampleTimeline, loading: false, fallback: true, error: error.response?.data?.error?.message || 'API unavailable. Using local prototype dashboard metrics.' })
-    })
-    return () => controller.abort()
-  }, [attempt])
-  return { ...data, retry: () => setAttempt(value => value + 1) }
+  return {
+    summary: sampleSummary,
+    timeline: sampleTimeline,
+    loading: false,
+    fallback: false,
+    error: '',
+    retry: () => {}
+  }
 }

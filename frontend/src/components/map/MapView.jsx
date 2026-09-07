@@ -899,6 +899,12 @@ export default function MapView() {
         streets: null
       }
 
+      // Phase 5: these belong to THIS viewer's scene; drop the refs so the next
+      // viewer instance re-creates them instead of touching a destroyed scene.
+      backendDsRef.current = new Map()
+      sphPointsRef.current = null
+      sphFootprintRef.current = []
+
 
       if (
         viewer &&
@@ -2051,72 +2057,91 @@ export default function MapView() {
 
 
   /* Phase 5: SPH demonstration-footprint outline + label (context, always shown
-     for an SPH run so the jury sees this is NOT georeferenced to the dam). */
+     for an SPH run so the jury sees this is NOT georeferenced to the dam).
+     Fully guarded — a Cesium failure here must never crash MapView. */
   useEffect(() => {
     const viewer = viewerRef.current
-    if (!viewer || viewer.isDestroyed()) return
-    sphFootprintRef.current.forEach(e => { try { viewer.entities.remove(e) } catch { /* gone */ } })
-    sphFootprintRef.current = []
-    const fp = particleData?.footprint
-    if (!fp || !Array.isArray(fp.corners_lonlat)) return
-    const lons = fp.corners_lonlat.map(c => c[0])
-    const lats = fp.corners_lonlat.map(c => c[1])
-    const rect = Rectangle.fromDegrees(Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats))
-    const outline = viewer.entities.add({
-      id: 'sph-footprint',
-      rectangle: { coordinates: rect, fill: false, outline: true, outlineColor: cssColor('#f2c14e'), outlineWidth: 2, height: 0 }
-    })
-    const label = viewer.entities.add({
-      id: 'sph-footprint-label',
-      position: Cartesian3.fromDegrees((Math.min(...lons) + Math.max(...lons)) / 2, Math.max(...lats), 40),
-      label: {
-        text: 'SPH DEMONSTRATION FOOTPRINT · NOT GEOREFERENCED',
-        font: 'bold 11px sans-serif', fillColor: cssColor('#f2c14e'),
-        style: LabelStyle.FILL_AND_OUTLINE, outlineColor: cssColor('#102332'), outlineWidth: 4,
-        pixelOffset: new Cartesian2(0, -10), disableDepthTestDistance: Number.POSITIVE_INFINITY
+    if (!viewer || viewer.isDestroyed() || !viewer.entities) return undefined
+    const drop = () => {
+      for (const id of ['sph-footprint', 'sph-footprint-label']) {
+        try { const e = viewer.entities.getById(id); if (e) viewer.entities.remove(e) } catch { /* gone */ }
       }
-    })
-    sphFootprintRef.current = [outline, label]
-    viewer.scene.requestRender?.()
-    return () => {
-      sphFootprintRef.current.forEach(e => { try { viewer.entities.remove(e) } catch { /* gone */ } })
       sphFootprintRef.current = []
     }
+    drop()
+    const fp = particleData?.footprint
+    if (!fp || !Array.isArray(fp.corners_lonlat) || fp.corners_lonlat.length < 2) return drop
+    try {
+      const lons = fp.corners_lonlat.map(c => Number(c[0])).filter(Number.isFinite)
+      const lats = fp.corners_lonlat.map(c => Number(c[1])).filter(Number.isFinite)
+      if (lons.length < 2 || lats.length < 2) return drop
+      const w = Math.min(...lons), e = Math.max(...lons), s = Math.min(...lats), n = Math.max(...lats)
+      const outline = viewer.entities.add({
+        id: 'sph-footprint',
+        rectangle: { coordinates: Rectangle.fromDegrees(w, s, e, n), fill: false, outline: true, outlineColor: cssColor('#f2c14e'), outlineWidth: 2, height: 0 }
+      })
+      const label = viewer.entities.add({
+        id: 'sph-footprint-label',
+        position: Cartesian3.fromDegrees((w + e) / 2, n, 40),
+        label: {
+          text: 'SPH DEMONSTRATION FOOTPRINT · NOT GEOREFERENCED',
+          font: 'bold 11px sans-serif', fillColor: cssColor('#f2c14e'),
+          style: LabelStyle.FILL_AND_OUTLINE, outlineColor: cssColor('#102332'), outlineWidth: 4,
+          pixelOffset: new Cartesian2(0, -10), disableDepthTestDistance: Number.POSITIVE_INFINITY
+        }
+      })
+      sphFootprintRef.current = [outline, label]
+      viewer.scene?.requestRender?.()
+    } catch (error) {
+      console.warn('SPH footprint layer skipped', error)
+    }
+    return drop
   }, [particleData, ready])
 
 
-  /* Phase 5: render the actual SPH particles for the current frame as points. */
+  /* Phase 5: render the actual SPH particles for the current frame as points.
+     Recreates the point collection if the previous viewer was torn down, and
+     never throws to the ErrorBoundary. */
   useEffect(() => {
     const viewer = viewerRef.current
-    if (!viewer || viewer.isDestroyed()) return
-    if (!sphPointsRef.current) {
-      sphPointsRef.current = viewer.scene.primitives.add(new PointPrimitiveCollection())
-    }
-    const pc = sphPointsRef.current
-    pc.removeAll()
-    if (!sphParticlesActive) { viewer.scene.requestRender?.(); return }
+    if (!viewer || viewer.isDestroyed() || !viewer.scene) return undefined
+    let pc
+    try {
+      const prims = viewer.scene.primitives
+      const stale = sphPointsRef.current &&
+        (sphPointsRef.current.isDestroyed?.() || !prims.contains(sphPointsRef.current))
+      if (!sphPointsRef.current || stale) {
+        sphPointsRef.current = prims.add(new PointPrimitiveCollection())
+      }
+      pc = sphPointsRef.current
+      pc.removeAll()
 
-    const frames = particleData.particle_frames
-    const available = frames.map((_, i) => i)
-    const idx = Math.min(nearestFrameMinute(available, minute) ?? 0, frames.length - 1)
-    const pts = frames[idx].points || []
-    const hot = sphView === 'velocity'
-    const vmax = Math.max(0.5, frames[idx].max_speed_mps || 1)
-    for (const p of pts) {
-      const [lon, lat, speed] = p
-      const f = Math.min(1, (speed || 0) / vmax)
-      // sequential water ramp (cyan -> blue -> indigo -> purple), hotter for velocity mode
-      const col = hot
-        ? Color.fromHsl(0.62 - 0.62 * f, 0.9, 0.35 + 0.25 * f, 0.95)
-        : Color.fromHsl(0.55 - 0.15 * f, 0.75, 0.45 + 0.1 * f, 0.9)
-      pc.add({
-        position: Cartesian3.fromDegrees(lon, lat, 6),
-        color: col, pixelSize: hot ? 6 : 5,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY
-      })
+      if (sphParticlesActive) {
+        const frames = particleData.particle_frames
+        const available = frames.map((_, i) => i)
+        const idx = Math.max(0, Math.min(nearestFrameMinute(available, minute) ?? 0, frames.length - 1))
+        const pts = (frames[idx] && frames[idx].points) || []
+        const hot = sphView === 'velocity'
+        const vmax = Math.max(0.5, Number(frames[idx]?.max_speed_mps) || 1)
+        for (const p of pts) {
+          const lon = Number(p[0]), lat = Number(p[1]), speed = Number(p[2]) || 0
+          if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue
+          const f = Math.min(1, Math.max(0, speed / vmax))
+          const col = hot
+            ? Color.fromHsl(0.62 - 0.62 * f, 0.9, 0.35 + 0.25 * f, 0.95)
+            : Color.fromHsl(0.55 - 0.15 * f, 0.75, 0.45 + 0.1 * f, 0.9)
+          pc.add({
+            position: Cartesian3.fromDegrees(lon, lat, 6),
+            color: col, pixelSize: hot ? 6 : 5,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY
+          })
+        }
+      }
+      viewer.scene.requestRender?.()
+    } catch (error) {
+      console.warn('SPH particle layer skipped', error)
     }
-    viewer.scene.requestRender?.()
-    return () => { try { pc.removeAll() } catch { /* gone */ } }
+    return () => { try { pc && pc.removeAll() } catch { /* gone */ } }
   }, [sphParticlesActive, particleData, minute, sphView, backendTick])
 
 

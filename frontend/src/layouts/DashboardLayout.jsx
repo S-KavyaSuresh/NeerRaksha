@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Bell, ChevronLeft, ChevronRight, CircleHelp, LayoutDashboard, SlidersHorizontal, Play, ChartNoAxesCombined, FlaskConical, Waves, ShieldAlert, Download, MapPin, X } from 'lucide-react'
@@ -23,26 +23,14 @@ export default function DashboardLayout() {
   useMapTools()
   usePrototypeRun()
   useSimulationRun()
-  const { collapsed, toggleCollapsed, emergency, toggleEmergency, playing, selectedStudyCase, setStudyCases, setSelectedStudyCase } = useDashboard()
+  const { collapsed, toggleCollapsed, emergency, toggleEmergency, playing, selectedStudyCase } = useDashboard()
   const [notifications,setNotifications] = useState(false)
   const [help,setHelp] = useState(false)
   const data = useIntelligence()
   const location = useLocation()
-  useEffect(()=>{
-    const controller=new AbortController()
-    const base=import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-    fetch(base+'/api/study-cases/ujjani',{signal:controller.signal})
-      .then(async response=>{
-        if(response.ok) return response.json()
-        const list=await fetch(base+'/api/study-cases',{signal:controller.signal})
-        if(!list.ok) return null
-        const cases=await list.json()
-        return Array.isArray(cases)?cases.find(item=>item.case_id==='ujjani')||null:null
-      })
-      .then(caseItem=>{if(caseItem){setStudyCases([caseItem]);setSelectedStudyCase(caseItem)}})
-      .catch(()=>{})
-    return()=>controller.abort()
-  },[setStudyCases,setSelectedStudyCase])
+  // The Ujjani study case comes from FALLBACK_UJJANI in the store plus the
+  // Phase-4 scenario workflow; the study-case repository endpoint (which is not
+  // deployed here and always 404s) is intentionally not called.
   return <div className={`dashboard ${collapsed?'rail-collapsed':''} ${emergency?'emergency-mode':''} ${location.pathname!=='/overview'?'has-workspace':''}`}>
     <header className="command-bar"><NavLink to="/overview" className="brand" aria-label="NeerRaksha overview"><img className="brand-logo" src="/branding/neerraksha-logo.png" alt=""/><div><strong>NeerRaksha</strong><small>Dam Break & Flood Intelligence Platform</small></div></NavLink><div className="study-area"><MapPin size={17}/><div><small>STUDY AREA</small><strong>Ujjani Dam / Bhima River</strong></div></div><div className="system-status"><span><i className="status-dot"/>{playing?'Replay running':'Simulation ready'}</span><small>{selectedStudyCase?.state || new Date(data.summary.updated_at || sampleTimestamp).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Kolkata'})+' IST'}</small></div><IconButton label="Show notifications" onClick={()=>setNotifications(!notifications)} aria-expanded={notifications}><Bell size={19}/><i className="notification-dot"/></IconButton><button className="emergency-button" onClick={toggleEmergency} aria-pressed={emergency}><ShieldAlert size={17}/><span>{emergency?'Exit Emergency Mode':'Emergency Mode'}</span></button><div className="avatar" title="Control room operator">OP</div></header>
     <nav className="navigation-rail" aria-label="Main navigation"><span className="rail-label">WORKSPACE</span><div className="nav-items">{navigation.map(([path,Icon,title])=><NavLink key={path} to={`/${path}`} title={title} data-tooltip={title} aria-label={title}><Icon size={20}/><span>{title}</span></NavLink>)}</div><div className="rail-footer"><button title="Platform information" aria-label="Platform information" onClick={()=>setHelp(!help)}><CircleHelp size={20}/><span>About NeerRaksha</span></button><button onClick={toggleCollapsed} aria-label={collapsed?'Expand navigation':'Collapse navigation'} title={collapsed?'Expand navigation':'Collapse navigation'}>{collapsed?<ChevronRight size={19}/>:<ChevronLeft size={19}/>}<span>Collapse panel</span></button></div></nav>
