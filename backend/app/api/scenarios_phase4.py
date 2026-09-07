@@ -163,3 +163,43 @@ def get_layer(job_id: str, layer: str):
             return FileResponse(p, media_type="image/tiff", filename=p.name)
     raise HTTPException(404, detail={"code": "LAYER_UNAVAILABLE",
                                     "message": f"'{layer}' not produced by this engine run.", "status": "unavailable"})
+
+
+@router.get("/{job_id}/impact")
+def get_impact(job_id: str):
+    _require(job_id)
+    d = _results_dir(job_id)
+    fe = d / "flood_extent.geojson"
+    if not fe.exists():
+        raise HTTPException(404, detail={"code": "NO_FLOOD_EXTENT", "message": "flood_extent.geojson not produced."})
+    from simulation import impact
+    r = scenario_jobs.results(job_id) or {}
+    return impact.analyse(fe, d, summary_area_km2=(r.get("summary") or {}).get("flooded_area_km2"))
+
+
+@router.get("/{job_id}/export/{fmt}")
+def get_export(job_id: str, fmt: str):
+    _require(job_id)
+    from simulation import gis_export
+    if fmt.lower() not in gis_export.VALID_FORMATS:
+        raise HTTPException(400, detail={"code": "BAD_FORMAT", "message": f"format must be one of {gis_export.VALID_FORMATS}"})
+    d = _results_dir(job_id)
+    fe = d / "flood_extent.geojson"
+    if not fe.exists():
+        raise HTTPException(404, detail={"code": "NO_FLOOD_EXTENT", "message": "flood_extent.geojson not produced."})
+    try:
+        path = gis_export.export(fe, d, fmt)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, detail={"code": "EXPORT_FAILED", "message": str(exc)})
+    return FileResponse(path, media_type=gis_export.media_type(fmt), filename=path.name)
+
+
+@router.get("/{job_id}/particles")
+def get_particles(job_id: str):
+    _require(job_id)
+    d = _results_dir(job_id)
+    pf = d / "particle_frames.json"
+    if pf.exists():
+        return json.loads(pf.read_text(encoding="utf-8"))
+    raise HTTPException(404, detail={"code": "NO_PARTICLES",
+                                    "message": "particle_frames.json not available (SPH engine only)."})

@@ -6,10 +6,14 @@ import {
   getSimulationTimeline,
   getSimulationFrame,
   getSimulationSummary,
+  getSimulationImpact,
+  getSimulationParticles,
   runScenario,
   getScenario,
   getScenarioResults,
-  getScenarioFrame
+  getScenarioFrame,
+  getScenarioImpact,
+  getScenarioParticles
 } from './api'
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -46,8 +50,8 @@ export function useSimulationRun() {
       maxDisplacementM: null, mesh: null, damLocation: null
     }
 
-    if (engine === 'delft3d') {
-      runPhase4Scenario(setBackend, resetFields)
+    if (engine === 'delft3d' || engine === 'sph') {
+      runPhase4Scenario(engine, setBackend, resetFields)
     } else {
       runSimulationLifecycle(engine, setBackend, resetFields)
     }
@@ -55,7 +59,7 @@ export function useSimulationRun() {
 }
 
 /* ---------- Phase-4 Ujjani scenario (breach at the physical dam) ------------ */
-async function runPhase4Scenario(setBackend, resetFields) {
+async function runPhase4Scenario(engine, setBackend, resetFields) {
   const sc = useDashboard.getState().scenario || {}
   const preset = sc.breach_type === 'partial'
     ? 'small_breach'
@@ -69,7 +73,7 @@ async function runPhase4Scenario(setBackend, resetFields) {
 
   try {
     setBackend(resetFields)
-    const created = await runScenario({ engine: 'delft3d', preset, params })
+    const created = await runScenario({ engine, preset, params })
     setBackend({ id: created.id, status: created.status, progress: created.progress, message: created.message })
 
     let snap = created
@@ -116,6 +120,10 @@ async function runPhase4Scenario(setBackend, resetFields) {
       maxDepthM: results.max_depth_m, maxVelocityMps: results.max_velocity_mps,
       mesh: results.mesh, damLocation: results.dam_location
     })
+    getScenarioImpact(created.id).then(impact => setBackend({ impact })).catch(() => {})
+    if (engine === 'sph') {
+      getScenarioParticles(created.id).then(particleData => setBackend({ particleData })).catch(() => {})
+    }
   } catch (error) {
     setBackend({ status: 'error', error: 'Ujjani scenario API unavailable — start the backend and retry.' })
   }
@@ -170,6 +178,10 @@ async function runSimulationLifecycle(engine, setBackend, resetFields) {
       status: 'completed', progress: 100,
       message: snapshot.fallback_used ? 'Completed via approximate fallback engine' : 'Flood timeline ready'
     })
+    getSimulationImpact(created.id).then(impact => setBackend({ impact })).catch(() => {})
+    if (engine === 'sph') {
+      getSimulationParticles(created.id).then(particleData => setBackend({ particleData })).catch(() => {})
+    }
   } catch (error) {
     setBackend({ status: 'error', error: 'Backend simulation API unavailable — showing local approximate preview.' })
   }

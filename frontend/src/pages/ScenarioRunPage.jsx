@@ -4,7 +4,8 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { useDashboard } from '../store/useDashboard'
 import {
   getScenarioPresets, runScenario, getScenario, getScenarioResults,
-  getScenarioHydrograph, getScenarioFrame
+  getScenarioHydrograph, getScenarioFrame, getScenarioImpact, getScenarioParticles,
+  scenarioExportUrl
 } from '../services/api'
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
@@ -22,6 +23,9 @@ const FIELDS = [
 
 export default function ScenarioRunPage() {
   const setBackend = useDashboard(s => s.setBackend)
+  const backendImpact = useDashboard(s => s.backend.impact)
+  const sphView = useDashboard(s => s.sphView)
+  const setSphView = useDashboard(s => s.setSphView)
   const [presets, setPresets] = useState(null)
   const [engine, setEngine] = useState('delft3d')
   const [preset, setPreset] = useState('medium_breach')
@@ -29,6 +33,7 @@ export default function ScenarioRunPage() {
   const [state, setState] = useState({ status: 'idle', progress: 0, message: '' })
   const [result, setResult] = useState(null)
   const [hydro, setHydro] = useState(null)
+  const [runId, setRunId] = useState(null)
   const [err, setErr] = useState('')
   const token = useRef(0)
 
@@ -73,8 +78,13 @@ export default function ScenarioRunPage() {
         engineLabel: res.engine_label, dataClass: 'MODEL OUTPUT',
         provenance: res.provenance, validatedHydraulicOutput: false,
         maxDepthM: res.max_depth_m, maxVelocityMps: res.max_velocity_mps,
-        mapFrames: minutes.length
+        mapFrames: minutes.length, id: created.id
       })
+      setRunId(created.id)
+      getScenarioImpact(created.id).then(impact => setBackend({ impact })).catch(() => {})
+      if (engine === 'sph') {
+        getScenarioParticles(created.id).then(particleData => setBackend({ particleData })).catch(() => {})
+      }
     } catch (e) {
       setErr('Scenario API unavailable — start the backend and retry.')
     }
@@ -160,6 +170,38 @@ export default function ScenarioRunPage() {
         <div><dt>Data classification</dt><dd>{result.data_classification}</dd></div>
         <div><dt>Validation status</dt><dd><strong>{result.validation_status}</strong> · {result.run_class}</dd></div>
       </dl>
+      {engine === 'sph' && <div className="run-status" style={{ marginTop: 8 }}>
+        <span className="status-dot" /> SPH VISUALIZATION
+        <label className="speed" style={{ marginLeft: 10, gap: 6 }}>
+          <span>mode</span>
+          <select value={sphView} onChange={e => setSphView(e.target.value)}>
+            <option value="depth">Flood depth</option>
+            <option value="particles">Particles</option>
+            <option value="velocity">Particles (velocity)</option>
+          </select>
+        </label>
+        <span style={{ marginLeft: 10, fontSize: 11, opacity: 0.8 }}>SPH DEMONSTRATION FOOTPRINT · not georeferenced</span>
+      </div>}
+
+      <div className="table-scroll"><table>
+        <caption>Impact analysis — spatial intersection of MODEL OUTPUT flood extent with REAL DATA (OpenStreetMap)</caption>
+        <thead><tr><th>Layer</th><th>Affected</th><th>Source / status</th></tr></thead>
+        <tbody>
+          <tr><td>Flooded area</td><td>{fmt(result.max_depth_m != null ? (result.summary?.flooded_area_km2 ?? backendImpact?.flooded_area_km2) : null, 3)} km²</td><td>MODEL OUTPUT</td></tr>
+          <tr><td>Roads</td><td>{backendImpact?.roads?.status === 'ok' ? `${backendImpact.roads.affected_count} / ${backendImpact.roads.total_in_dataset} (~${fmt(backendImpact.roads.approx_flooded_length_km, 1)} km)` : 'Unavailable'}</td><td>{backendImpact?.roads?.source || backendImpact?.roads?.reason || '…'}</td></tr>
+          <tr><td>Facilities</td><td>{backendImpact?.facilities?.status === 'ok' ? `${backendImpact.facilities.affected_count} / ${backendImpact.facilities.total_in_dataset}` : 'Unavailable'}</td><td>{backendImpact?.facilities?.source || backendImpact?.facilities?.reason || '…'}</td></tr>
+          <tr><td>Settlements</td><td>Unavailable</td><td>{backendImpact?.settlements?.reason || 'dataset not connected'}</td></tr>
+          <tr><td>Population</td><td>Unavailable</td><td>{backendImpact?.population?.reason || 'no population dataset connected'}</td></tr>
+        </tbody>
+      </table></div>
+
+      {runId && <div className="form-actions" style={{ flexWrap: 'wrap' }}>
+        <span style={{ alignSelf: 'center', fontSize: 12, opacity: 0.8 }}>GIS export (flood extent):</span>
+        {['geojson', 'shp', 'kml'].map(f => (
+          <a key={f} className="action-button" href={scenarioExportUrl(runId, f)} download>{f.toUpperCase()}</a>
+        ))}
+      </div>}
+
       <details className="technical-log"><summary>Assumptions ({(result.assumptions || []).length})</summary>
         <ul>{(result.assumptions || []).map((a, i) => <li key={i}>{a}</li>)}</ul>
       </details>

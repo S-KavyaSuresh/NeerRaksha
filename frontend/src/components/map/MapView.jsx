@@ -22,7 +22,9 @@ import {
   LabelStyle,
   BoundingSphere,
   HeadingPitchRange,
-  PolygonHierarchy
+  PolygonHierarchy,
+  PointPrimitiveCollection,
+  Rectangle
 } from 'cesium'
 
 import {
@@ -311,6 +313,10 @@ export default function MapView() {
   const backendDsRef = useRef(new Map())
   const [backendTick, setBackendTick] = useState(0)
 
+  /* Phase 5: SPH particle points + demonstration-footprint outline. */
+  const sphPointsRef = useRef(null)
+  const sphFootprintRef = useRef([])
+
   /*
    * Old prototype flood frames are preserved for legacy cases.
    *
@@ -358,14 +364,23 @@ export default function MapView() {
     focusRequest,
     selectedStudyCase,
     scenario,
-    backend
+    backend,
+    sphView
   } = useDashboard()
+
+  const particleData = backend?.particleData
+  const sphParticlesActive =
+    !!particleData &&
+    Array.isArray(particleData.particle_frames) &&
+    particleData.particle_frames.length > 0 &&
+    (sphView === 'particles' || sphView === 'velocity')
 
   const backendFloodActive =
     selectedStudyCase?.case_id === 'ujjani' &&
     backend?.status === 'completed' &&
     backend?.frames &&
-    Object.keys(backend.frames).length > 0
+    Object.keys(backend.frames).length > 0 &&
+    !sphParticlesActive
 
   const backendPoint = (() => {
     if (!backendFloodActive || !Array.isArray(backend.timeline) || !backend.timeline.length) return null
@@ -2032,18 +2047,94 @@ export default function MapView() {
     sources.forEach((source, frameMinute) => { source.show = frameMinute === target })
     const viewer = viewerRef.current
     if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender?.()
-  }, [minute, layers.flood, backendTick])
+  }, [minute, layers.flood, backendTick, sphParticlesActive])
 
 
-  /* Fly to the modelled flood extent once, when a new backend run's frames arrive. */
+  /* Phase 5: SPH demonstration-footprint outline + label (context, always shown
+     for an SPH run so the jury sees this is NOT georeferenced to the dam). */
   useEffect(() => {
     const viewer = viewerRef.current
-    if (!viewer || viewer.isDestroyed() || !backendFloodActive) return
-    const minutes = Object.keys(backend.frames).map(Number).sort((a, b) => b - a)
+    if (!viewer || viewer.isDestroyed()) return
+    sphFootprintRef.current.forEach(e => { try { viewer.entities.remove(e) } catch { /* gone */ } })
+    sphFootprintRef.current = []
+    const fp = particleData?.footprint
+    if (!fp || !Array.isArray(fp.corners_lonlat)) return
+    const lons = fp.corners_lonlat.map(c => c[0])
+    const lats = fp.corners_lonlat.map(c => c[1])
+    const rect = Rectangle.fromDegrees(Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats))
+    const outline = viewer.entities.add({
+      id: 'sph-footprint',
+      rectangle: { coordinates: rect, fill: false, outline: true, outlineColor: cssColor('#f2c14e'), outlineWidth: 2, height: 0 }
+    })
+    const label = viewer.entities.add({
+      id: 'sph-footprint-label',
+      position: Cartesian3.fromDegrees((Math.min(...lons) + Math.max(...lons)) / 2, Math.max(...lats), 40),
+      label: {
+        text: 'SPH DEMONSTRATION FOOTPRINT · NOT GEOREFERENCED',
+        font: 'bold 11px sans-serif', fillColor: cssColor('#f2c14e'),
+        style: LabelStyle.FILL_AND_OUTLINE, outlineColor: cssColor('#102332'), outlineWidth: 4,
+        pixelOffset: new Cartesian2(0, -10), disableDepthTestDistance: Number.POSITIVE_INFINITY
+      }
+    })
+    sphFootprintRef.current = [outline, label]
+    viewer.scene.requestRender?.()
+    return () => {
+      sphFootprintRef.current.forEach(e => { try { viewer.entities.remove(e) } catch { /* gone */ } })
+      sphFootprintRef.current = []
+    }
+  }, [particleData, ready])
+
+
+  /* Phase 5: render the actual SPH particles for the current frame as points. */
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
+    if (!sphPointsRef.current) {
+      sphPointsRef.current = viewer.scene.primitives.add(new PointPrimitiveCollection())
+    }
+    const pc = sphPointsRef.current
+    pc.removeAll()
+    if (!sphParticlesActive) { viewer.scene.requestRender?.(); return }
+
+    const frames = particleData.particle_frames
+    const available = frames.map((_, i) => i)
+    const idx = Math.min(nearestFrameMinute(available, minute) ?? 0, frames.length - 1)
+    const pts = frames[idx].points || []
+    const hot = sphView === 'velocity'
+    const vmax = Math.max(0.5, frames[idx].max_speed_mps || 1)
+    for (const p of pts) {
+      const [lon, lat, speed] = p
+      const f = Math.min(1, (speed || 0) / vmax)
+      // sequential water ramp (cyan -> blue -> indigo -> purple), hotter for velocity mode
+      const col = hot
+        ? Color.fromHsl(0.62 - 0.62 * f, 0.9, 0.35 + 0.25 * f, 0.95)
+        : Color.fromHsl(0.55 - 0.15 * f, 0.75, 0.45 + 0.1 * f, 0.9)
+      pc.add({
+        position: Cartesian3.fromDegrees(lon, lat, 6),
+        color: col, pixelSize: hot ? 6 : 5,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY
+      })
+    }
+    viewer.scene.requestRender?.()
+    return () => { try { pc.removeAll() } catch { /* gone */ } }
+  }, [sphParticlesActive, particleData, minute, sphView, backendTick])
+
+
+  /* Fly to the modelled flood extent (Delft3D) or the SPH demonstration footprint. */
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || viewer.isDestroyed()) return
     let bounds = null
-    for (const frameMinute of minutes) {
-      bounds = featureCollectionBounds(backend.frames[frameMinute])
-      if (bounds) break
+    if (backendFloodActive) {
+      const minutes = Object.keys(backend.frames).map(Number).sort((a, b) => b - a)
+      for (const frameMinute of minutes) {
+        bounds = featureCollectionBounds(backend.frames[frameMinute])
+        if (bounds) break
+      }
+    } else if (particleData?.footprint?.corners_lonlat) {
+      const lons = particleData.footprint.corners_lonlat.map(c => c[0])
+      const lats = particleData.footprint.corners_lonlat.map(c => c[1])
+      bounds = [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)]
     }
     if (!bounds) return
     const [west, south, east, north] = bounds
@@ -2064,7 +2155,7 @@ export default function MapView() {
       }
     })
     return () => cancelAnimationFrame(handle)
-  }, [backendFloodActive, backend.id])
+  }, [backendFloodActive, backend.id, particleData])
 
 
   /*
@@ -2826,29 +2917,30 @@ export default function MapView() {
 
       <div className="active-frame glass">
 
-        T+
-        {(backendPoint ? Number(minute || 0) : activeFrame.minute)
-          .toFixed(1)
-          .padStart(
-            4,
-            '0'
-          )}
-
-
-        <span>
-          {backendPoint
-            ? `max ${Number(backendPoint.max_depth_m || 0).toFixed(1)} m · ${Number(backendPoint.flooded_area_km2 || 0).toFixed(2)} km²`
-            : `0–${activeFrame.depth.toFixed(1)} m · ${activeFrame.risk}`}
-        </span>
-
-
-        <small>
-          {backendPoint
-            ? `${(backend?.engineLabel || 'BACKEND SIMULATION').toUpperCase()} · ${(backend?.dataClass || 'MODEL OUTPUT')}`
-            : selectedStudyCase?.case_id === 'ujjani'
-              ? 'AUTOMATED APPROXIMATE 2D FLOOD-ROUTING PROTOTYPE'
-              : 'APPROXIMATE FLOOD-ROUTING MODEL'}
-        </small>
+        {(() => {
+          if (particleData && Array.isArray(particleData.particle_frames)) {
+            const av = particleData.particle_frames.map((_, i) => i)
+            const idx = Math.min(nearestFrameMinute(av, minute) ?? 0, particleData.particle_frames.length - 1)
+            const fr = particleData.particle_frames[idx] || {}
+            return <>Frame {idx}
+              <span>SPH t {Number(fr.sph_time_s || 0).toFixed(2)} s · max {Number(fr.max_speed_mps || 0).toFixed(1)} m/s</span>
+              <small>SPH (GENUINE WCSPH) · MODEL OUTPUT · {sphView === 'depth' ? 'FLOOD DEPTH' : 'PARTICLE VIEW'} · NOT GEOREFERENCED</small></>
+          }
+          return <>T+
+            {(backendPoint ? Number(minute || 0) : activeFrame.minute).toFixed(1).padStart(4, '0')}
+            <span>
+              {backendPoint
+                ? `max ${Number(backendPoint.max_depth_m || 0).toFixed(1)} m · ${Number(backendPoint.flooded_area_km2 || 0).toFixed(2)} km²`
+                : `0–${activeFrame.depth.toFixed(1)} m · ${activeFrame.risk}`}
+            </span>
+            <small>
+              {backendPoint
+                ? `${(backend?.engineLabel || 'BACKEND SIMULATION').toUpperCase()} · ${(backend?.dataClass || 'MODEL OUTPUT')}`
+                : selectedStudyCase?.case_id === 'ujjani'
+                  ? 'AUTOMATED APPROXIMATE 2D FLOOD-ROUTING PROTOTYPE'
+                  : 'APPROXIMATE FLOOD-ROUTING MODEL'}
+            </small></>
+        })()}
 
       </div>
 
@@ -2950,75 +3042,32 @@ export default function MapView() {
 
 
       <div className="depth-legend glass">
-
-        <span>
-          WATER DEPTH{' '}
-
-          <small>
-            approximate model
-          </small>
-        </span>
-
-
-        <div
-          style={{
-            display:
-              'grid',
-
-            gridTemplateColumns:
-              '1fr 1fr',
-
-            gap:
-              8,
-
-            marginTop:
-              8
-          }}
-        >
-
-          {depthBands.map(
-            band => (
-
-              <span
-                key={band.id}
-
-                style={{
-                  display:
-                    'flex',
-
-                  alignItems:
-                    'center',
-
-                  gap:
-                    5
-                }}
-              >
-
-                <i
-                  style={{
-                    width:
-                      12,
-
-                    height:
-                      12,
-
-                    background:
-                      band.color,
-
-                    borderRadius:
-                      2
-                  }}
-                />
-
-
-                {band.label}
-
+        {sphParticlesActive && sphView === 'velocity' ? <>
+          <span>PARTICLE VELOCITY <small>SPH · m/s</small></span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+            <span style={{ fontSize: 10 }}>0</span>
+            <i style={{ flex: 1, height: 10, borderRadius: 2, background: 'linear-gradient(90deg,#1e40af,#6d28d9,#db2777,#f97316)' }} />
+            <span style={{ fontSize: 10 }}>max</span>
+          </div>
+          <small style={{ opacity: 0.75 }}>each dot = one SPH particle</small>
+        </> : sphParticlesActive ? <>
+          <span>SPH PARTICLES <small>speed-shaded</small></span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+            <span style={{ fontSize: 10 }}>slow</span>
+            <i style={{ flex: 1, height: 10, borderRadius: 2, background: 'linear-gradient(90deg,#22d3ee,#3b82f6,#6366f1)' }} />
+            <span style={{ fontSize: 10 }}>fast</span>
+          </div>
+          <small style={{ opacity: 0.75 }}>each dot = one SPH particle · not georeferenced</small>
+        </> : <>
+          <span>WATER DEPTH <small>{backendFloodActive ? (backend?.engineLabel || 'MODEL OUTPUT') : 'approximate model'}</small></span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+            {[['#22D3EE', '0.05–1 m'], ['#3B82F6', '1–3 m'], ['#6366F1', '3–6 m'], ['#A855F7', '6+ m']].map(([c, l]) => (
+              <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <i style={{ width: 12, height: 12, background: c, borderRadius: 2 }} />{l}
               </span>
-            )
-          )}
-
-        </div>
-
+            ))}
+          </div>
+        </>}
       </div>
 
 

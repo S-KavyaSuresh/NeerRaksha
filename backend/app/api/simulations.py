@@ -151,6 +151,49 @@ def get_result_layer(job_id: str, layer: str):
     return FileResponse(path, media_type="image/tiff", filename=path.name)
 
 
+@router.get("/{job_id}/impact")
+def get_impact(job_id: str):
+    _require(job_id)
+    rd = jobs.results_path(job_id)
+    if rd is None:
+        raise HTTPException(409, detail={"code": "SIMULATION_NOT_READY", "message": "No results yet."})
+    from simulation import impact
+    fe = rd / "flood_extent.geojson"
+    if not fe.exists():
+        raise HTTPException(404, detail={"code": "NO_FLOOD_EXTENT", "message": "flood_extent.geojson not produced."})
+    summary = jobs.load_summary(job_id) or {}
+    return impact.analyse(fe, rd, summary_area_km2=summary.get("flooded_area_km2"))
+
+
+@router.get("/{job_id}/export/{fmt}")
+def get_export(job_id: str, fmt: str):
+    _require(job_id)
+    from simulation import gis_export
+    if fmt.lower() not in gis_export.VALID_FORMATS:
+        raise HTTPException(400, detail={"code": "BAD_FORMAT", "message": f"format must be one of {gis_export.VALID_FORMATS}"})
+    rd = jobs.results_path(job_id)
+    fe = (rd / "flood_extent.geojson") if rd else None
+    if not fe or not fe.exists():
+        raise HTTPException(404, detail={"code": "NO_FLOOD_EXTENT", "message": "flood_extent.geojson not produced."})
+    try:
+        path = gis_export.export(fe, rd, fmt)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(500, detail={"code": "EXPORT_FAILED", "message": str(exc)})
+    return FileResponse(path, media_type=gis_export.media_type(fmt), filename=path.name)
+
+
+@router.get("/{job_id}/particles")
+def get_particles(job_id: str):
+    _require(job_id)
+    rd = jobs.results_path(job_id)
+    pf = (rd / "particle_frames.json") if rd else None
+    if pf and pf.exists():
+        import json
+        return json.loads(pf.read_text(encoding="utf-8"))
+    raise HTTPException(404, detail={"code": "NO_PARTICLES",
+                                    "message": "particle_frames.json not available (SPH engine only)."})
+
+
 @router.get("/{job_id}/validation")
 def get_validation(job_id: str):
     """Satellite (Sentinel-1 / GEE) comparison — honest 'unavailable' until wired."""

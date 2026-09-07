@@ -93,8 +93,37 @@ def _minutes(times, time_units):
     return [float(t) * factor for t in times]
 
 
+def _fill_from_faces(sparse: np.ndarray, seeded: np.ndarray, reach: int) -> np.ndarray:
+    """Grow the seeded (face-centre) cells outward by up to `reach` cells, each
+    empty cell taking the max of its already-filled 4-neighbours. This bridges the
+    gaps between scattered mesh face centres so the rasterised field is
+    CONTINUOUS, without inventing water more than `reach` cells from an actual
+    flooded face (a 'the mesh cell around this face is wet' interpretation).
+    """
+    grid = sparse.astype("float32").copy()
+    filled = seeded.copy()
+    for _ in range(max(reach, 0)):
+        nb = np.zeros_like(grid)
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            shifted = np.zeros_like(grid)
+            fshift = np.zeros_like(filled)
+            ys = slice(max(dy, 0), grid.shape[0] + min(dy, 0))
+            yt = slice(max(-dy, 0), grid.shape[0] + min(-dy, 0))
+            xs = slice(max(dx, 0), grid.shape[1] + min(dx, 0))
+            xt = slice(max(-dx, 0), grid.shape[1] + min(-dx, 0))
+            shifted[yt, xt] = grid[ys, xs]
+            fshift[yt, xt] = filled[ys, xs]
+            nb = np.where(fshift, np.maximum(nb, shifted), nb)
+        grow = (~filled) & (nb > 0)
+        if not grow.any():
+            break
+        grid[grow] = nb[grow]
+        filled |= grow
+    return grid
+
+
 def process(map_nc: str | Path, out_dir: str | Path, scenario: dict | None = None,
-            cell_size: float = 30.0) -> dict:
+            cell_size: float = 150.0) -> dict:
     import rasterio
     from rasterio.transform import from_origin
 
@@ -112,7 +141,6 @@ def process(map_nc: str | Path, out_dir: str | Path, scenario: dict | None = Non
     nt = depth.shape[0]
     minutes_axis = _minutes(times, time_units)
 
-    # Rasterise scattered face values onto a regular grid by nearest-cell binning.
     minx, maxx = float(fx.min()), float(fx.max())
     miny, maxy = float(fy.min()), float(fy.max())
     ncols = max(2, int(np.ceil((maxx - minx) / cell_size)))
@@ -121,22 +149,35 @@ def process(map_nc: str | Path, out_dir: str | Path, scenario: dict | None = Non
     col = np.clip(((fx - minx) / cell_size).astype(int), 0, ncols - 1)
     row = np.clip(((maxy - fy) / cell_size).astype(int), 0, nrows - 1)
 
+    # fill radius ~ one mesh face spacing, so gaps between faces are bridged
+    spacing = np.sqrt((maxx - minx) * (maxy - miny) / max(depth.shape[1], 1))
+    reach = int(np.clip(np.ceil(spacing / cell_size) + 1, 2, 8))
+
     max_depth = np.zeros((nrows, ncols), "float32")
     max_vel = np.zeros((nrows, ncols), "float32")
     arrival = np.full((nrows, ncols), -1.0, "float32")
     timeline = []
 
     for t in range(nt):
-        grid = np.zeros((nrows, ncols), "float32")
-        grid[row, col] = np.nan_to_num(depth[t])
+        sparse = np.zeros((nrows, ncols), "float32")
+        seed = np.zeros((nrows, ncols), bool)
+        d_t = np.nan_to_num(depth[t])
+        np.maximum.at(sparse, (row, col), d_t)
+        seed[row, col] = d_t >= 0.02
+        grid = _fill_from_faces(sparse, seed, reach)
         max_depth = np.maximum(max_depth, grid)
+
         vg = np.zeros((nrows, ncols), "float32")
         if vel is not None:
-            vg[row, col] = np.nan_to_num(vel[t])
+            v_t = np.nan_to_num(vel[t])
+            vsparse = np.zeros((nrows, ncols), "float32")
+            np.maximum.at(vsparse, (row, col), v_t)
+            vg = _fill_from_faces(vsparse, seed, reach)
+            vg[grid < 0.05] = 0.0
             max_vel = np.maximum(max_vel, vg)
+
         minute = minutes_axis[t]
-        newly = (arrival < 0) & (grid >= 0.05)
-        arrival[newly] = minute
+        arrival[(arrival < 0) & (grid >= 0.05)] = minute
         _write_frame(out_dir / "timeline" / f"t{int(round(minute)):03d}.geojson",
                      grid, transform, minute, scenario, crs)
         timeline.append({
@@ -156,6 +197,12 @@ def process(map_nc: str | Path, out_dir: str | Path, scenario: dict | None = Non
     _write_frame(out_dir / "flood_extent.geojson", max_depth, transform,
                  timeline[-1]["minute"] if timeline else 0, scenario, crs)
 
+    # sparse velocity-direction arrows (LineStrings) for the optional map layer
+    if vel is not None:
+        _write_velocity_vectors(out_dir / "velocity_vectors.geojson", fx, fy,
+                                np.nan_to_num(np.array(vel[-1])),
+                                _ucomp(map_nc), crs, scenario)
+
     summary = {
         "case_id": "ujjani",
         "model_type": "delft3d_dflowfm",
@@ -172,6 +219,58 @@ def process(map_nc: str | Path, out_dir: str | Path, scenario: dict | None = Non
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary
+
+
+def _ucomp(map_nc: Path):
+    """(ucx, ucy) at the LAST time frame, or (None, None)."""
+    import netCDF4
+
+    with netCDF4.Dataset(map_nc) as ds:
+        if "mesh2d_ucx" not in ds.variables or "mesh2d_ucy" not in ds.variables:
+            return None, None
+        return (np.nan_to_num(np.array(ds.variables["mesh2d_ucx"][-1])),
+                np.nan_to_num(np.array(ds.variables["mesh2d_ucy"][-1])))
+
+
+def _write_velocity_vectors(path: Path, fx, fy, mag, uxuy, src_crs, scenario,
+                            target=120, min_mag=0.05):
+    """Sample the velocity field to ~`target` arrows (short LineStrings) so the
+    map can show flow direction without thousands of points."""
+    from rasterio.warp import transform_geom
+    from rasterio.crs import CRS
+
+    ux, uy = uxuy
+    if ux is None:
+        path.write_text('{"type":"FeatureCollection","features":[]}', encoding="utf-8")
+        return
+    wet = np.where(mag >= min_mag)[0]
+    if wet.size == 0:
+        path.write_text('{"type":"FeatureCollection","features":[]}', encoding="utf-8")
+        return
+    step = max(1, wet.size // target)
+    idx = wet[::step]
+    span = float(np.hypot(fx.max() - fx.min(), fy.max() - fy.min()))
+    arrow_len = span / 90.0
+    wgs84 = CRS.from_epsg(4326)
+    reproj = src_crs is not None and CRS.from_user_input(src_crs) != wgs84
+    feats = []
+    for i in idx:
+        m = float(mag[i])
+        if m < min_mag:
+            continue
+        nx, ny = ux[i] / (m + 1e-9), uy[i] / (m + 1e-9)
+        x0, y0 = float(fx[i]), float(fy[i])
+        x1, y1 = x0 + nx * arrow_len, y0 + ny * arrow_len
+        geom = {"type": "LineString", "coordinates": [[x0, y0], [x1, y1]]}
+        if reproj:
+            geom = transform_geom(src_crs, wgs84, geom, precision=7)
+        bearing = float((np.degrees(np.arctan2(float(nx), float(ny))) + 360.0) % 360.0)
+        feats.append({"type": "Feature", "properties": {
+            "speed_mps": round(m, 3), "bearing_deg": round(bearing, 1),
+            "model_type": "delft3d_dflowfm", "validated_hydraulic_output": False,
+            "scenario_id": (scenario or {}).get("preset"),
+        }, "geometry": geom})
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": feats}), encoding="utf-8")
 
 
 def _write_frame(path: Path, grid, transform, minute: float, scenario: dict | None,

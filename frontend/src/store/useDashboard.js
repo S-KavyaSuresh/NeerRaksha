@@ -16,7 +16,9 @@ const FALLBACK_UJJANI = {
 export const IDLE_BACKEND = {
   id:null, status:'idle', progress:0, message:'', engineLabel:null, dataClass:null,
   provenance:null, fallbackUsed:false, availableFrames:[], frames:{}, summary:null,
-  timeline:[], error:''
+  timeline:[], error:'',
+  particleData:null,   // Phase 5: SPH particle frames { particle_frames, footprint, ... }
+  impact:null          // Phase 5: spatial impact analysis result
 }
 
 export const useDashboard = create((set,get) => ({
@@ -24,6 +26,8 @@ export const useDashboard = create((set,get) => ({
   backend: { ...IDLE_BACKEND },
   runNonce: 0,
   simEngine: 'approximate', // 'approximate' | 'delft3d' | 'sph'
+  sphView: 'depth',         // Phase 5: 'depth' | 'particles' | 'velocity'
+  setSphView: v => set({ sphView: ['depth', 'particles', 'velocity'].includes(v) ? v : 'depth' }),
   setSimEngine: simEngine => set({ simEngine: ['approximate', 'delft3d', 'sph'].includes(simEngine) ? simEngine : 'approximate' }),
   setBackend: partial => set(state => ({ backend: { ...state.backend, ...partial } })),
   resetBackend: () => set({ backend: { ...IDLE_BACKEND } }),

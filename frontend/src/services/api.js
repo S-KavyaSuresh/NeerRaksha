@@ -68,6 +68,27 @@ export async function getScenarioFrame(id, minute, signal) {
   const { data } = await api.get(`/api/scenarios/${id}/timeline/${minute}`, { signal, timeout: 15000 })
   return data
 }
+
+// --- Phase 5: impact analysis, SPH particles, GIS export --------------------
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+export async function getScenarioImpact(id, signal) {
+  const { data } = await api.get(`/api/scenarios/${id}/impact`, { signal, timeout: 20000 })
+  return data
+}
+export async function getSimulationImpact(id, signal) {
+  const { data } = await api.get(`/api/simulations/${id}/impact`, { signal, timeout: 20000 })
+  return data
+}
+export async function getScenarioParticles(id, signal) {
+  const { data } = await api.get(`/api/scenarios/${id}/particles`, { signal, timeout: 20000 })
+  return data
+}
+export async function getSimulationParticles(id, signal) {
+  const { data } = await api.get(`/api/simulations/${id}/particles`, { signal, timeout: 20000 })
+  return data
+}
+export const scenarioExportUrl = (id, fmt) => `${API_BASE}/api/scenarios/${id}/export/${fmt}`
+export const simulationExportUrl = (id, fmt) => `${API_BASE}/api/simulations/${id}/export/${fmt}`
 export async function fetchDashboard(signal) {
   const [summary, timeline] = await Promise.all([
     api.get(`/api/simulations/${simulationId}/summary`, { signal }),

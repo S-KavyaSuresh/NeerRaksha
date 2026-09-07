@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { useDashboard } from '../store/useDashboard'
 import { pipelineStages, pipelineStatus } from '../data/pipeline.js'
 import { scenarioFields } from '../data/scenarios.js'
+import { scenarioExportUrl } from '../services/api'
 
 const BACKEND_LABEL = {
   idle:'Not started', queued:'Queued', running:'Running', completed:'Completed',
@@ -13,15 +14,17 @@ const BACKEND_LABEL = {
 const ENGINE_NOTE = {
   approximate: 'Automated approximate 2D flood-routing prototype · not validated hydraulic output.',
   delft3d: 'Delft3D D-Flow FM · Phase-4 Ujjani scenario: breach released at the physical dam coordinate (18.0739 N, 75.1200 E) on the real terrain mesh · MODEL DEMONSTRATION · NOT VALIDATED FOR OPERATIONAL PREDICTION.',
-  sph: 'SPH demonstration-scale model; genuine weakly-compressible SPH dam-break mapped to a demonstration footprint · not validated for operational prediction.'
+  sph: 'SPH · genuine 2D weakly-compressible SPH dam-break (Phase-4 reduced-resolution prototype). Particle motion is real solver output; the geographic footprint is a DEMONSTRATION and is NOT georeferenced or validated.'
 }
 
 export default function SimulationPage() {
-  const { scenario,run,startRun,cancelRun,resetRun,backend,simEngine,setSimEngine }=useDashboard()
+  const { scenario,run,startRun,cancelRun,resetRun,backend,simEngine,setSimEngine,sphView,setSphView }=useDashboard()
   const [error,setError]=useState('')
   function start() {const result=startRun();setError(result.ok?'':Object.values(result.errors).join(' '))}
   const frameCount=backend?.availableFrames?.length||0
   const meshFaces=backend?.mesh?.faces
+  const runId=backend?.id
+  const canExport=backend?.status==='completed'&&runId&&String(runId).startsWith('scn-')
   return <><p className="prototype-disclaimer">Automated approximate 2D flood-routing prototype · not validated operational hydraulic output.</p>
     <div className="selected-scenario"><span>SELECTED SCENARIO</span><strong>{scenario.name}</strong><Link to="/scenario">Edit assumptions →</Link></div>
     <ol className="pipeline">{pipelineStages.map((stage,index)=><li key={stage} className={index===2?'pipeline-skipped':pipelineStatus(run,index).startsWith('Complete')?'pipeline-complete':''}><span>{String(index+1).padStart(2,'0')}</span><div><strong>{stage}</strong><small>{pipelineStatus(run,index)}</small></div></li>)}</ol>
@@ -30,7 +33,7 @@ export default function SimulationPage() {
       <select aria-label="Simulation engine" value={simEngine} onChange={e=>setSimEngine(e.target.value)} disabled={backend?.status==='running'||backend?.status==='queued'}>
         <option value="approximate">Approximate 2D routing (fast)</option>
         <option value="delft3d">Delft3D D-Flow FM — Ujjani breach at the dam (Phase 4)</option>
-        <option value="sph">SPH (demonstration)</option>
+        <option value="sph">SPH — genuine WCSPH (reduced-resolution prototype)</option>
       </select></label>
     <p className="prototype-disclaimer">{ENGINE_NOTE[simEngine]}{simEngine==='delft3d'?<> Full breach controls: <Link to="/ujjani-scenario">Ujjani Dam-Break page →</Link></>:null}</p>
     <div className="form-actions"><button className="action-button" onClick={start} disabled={run.status==='running'}><Play size={16}/> Run Simulation</button>{run.status==='running'&&<button onClick={cancelRun}><Square size={15}/> Cancel</button>}<button onClick={resetRun}><RotateCcw size={15}/> Reset</button></div>{error&&<p role="alert" className="field-error">{error}</p>}
@@ -54,6 +57,18 @@ export default function SimulationPage() {
       {(simEngine==='delft3d'||simEngine==='sph')&&<div><dt>Solver runtime</dt><dd>{backend?.runtimeSeconds!=null?`${Number(backend.runtimeSeconds).toFixed(1)} s`:'—'}</dd></div>}
     </dl>
     {backend?.error&&<p role="alert" className="field-error">{backend.error}</p>}
+    {simEngine==='sph'&&backend?.status==='completed'&&<label className="speed" style={{display:'flex',gap:8,alignItems:'center',margin:'6px 0'}}><span>SPH view</span>
+      <select value={sphView} onChange={e=>setSphView(e.target.value)}>
+        <option value="depth">Flood depth (reconstructed field)</option>
+        <option value="particles">Particles</option>
+        <option value="velocity">Particles (velocity-shaded)</option>
+      </select>
+      <span style={{fontSize:11,opacity:.75}}>particles animate through real SPH frames · not georeferenced</span>
+    </label>}
+    {canExport&&<div className="form-actions" style={{flexWrap:'wrap',marginTop:6}}>
+      <span style={{alignSelf:'center',fontSize:12,opacity:.8}}>GIS export (flood extent):</span>
+      {['geojson','shp','kml'].map(f=><a key={f} className="action-button" href={scenarioExportUrl(runId,f)} download>{f.toUpperCase()}</a>)}
+    </div>}
     {backend?.status==='completed'&&<p className="prototype-disclaimer">Move the simulation timeline below — the Cesium flood layer follows these {frameCount} model frames. Not validated operational hydraulic output.</p>}
     <details className="technical-log"><summary>Selected parameters & technical status</summary><dl className="workspace-values"><div><dt>Breach type</dt><dd>{scenario.breach_type}</dd></div>{scenarioFields.map(field=><div key={field.key}><dt>{field.label}</dt><dd>{scenario[field.key]}</dd></div>)}</dl><ul><li>Data validation checks prototype parameter ranges.</li><li>Terrain preparation stages the existing map context; no terrain analysis runs.</li><li>The local routing model prepares scenario-specific propagation and depth bands.</li><li>Processing prepares continuous 0–60 minute scenario playback.</li><li>Visualization starts 0–60 minute sample playback on completion.</li><li>Elapsed time measures preparation of the interactive prototype scenario.</li></ul></details>
   </>

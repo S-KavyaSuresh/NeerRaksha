@@ -207,6 +207,41 @@ def run(sc: scen.UjjaniScenario, hydrograph: dict, out_dir: Path,
                         **{f"x_{k}": f["x"] for k, f in enumerate(res.frames)},
                         **{f"v_{k}": f["v"] for k, f in enumerate(res.frames)})
 
+    # particle frames as lon/lat JSON for the frontend Particle View. The affine
+    # placement is a DEMONSTRATION only (georeferenced = false).
+    sx = _PLACE_DLON / box[0]
+    sy = _PLACE_DLAT / box[1]
+    lon0, lat0 = sc.dam_lon, sc.dam_lat
+    footprint = {
+        "corners_lonlat": [[lon0, lat0], [lon0 + _PLACE_DLON, lat0],
+                           [lon0 + _PLACE_DLON, lat0 + _PLACE_DLAT], [lon0, lat0 + _PLACE_DLAT],
+                           [lon0, lat0]],
+        "box_m": list(box), "georeferenced": False,
+        "label": "SPH DEMONSTRATION FOOTPRINT — visualization only; not georeferenced",
+    }
+    pframes = []
+    for k, frame in enumerate(res.frames):
+        px, py = frame["x"][:, 0], frame["x"][:, 1]
+        spd = np.hypot(frame["v"][:, 0], frame["v"][:, 1])
+        lon = lon0 + px * sx
+        lat = lat0 + py * sy
+        pts = [[round(float(lon[i]), 7), round(float(lat[i]), 7),
+                round(float(spd[i]), 4), round(float(frame["rho"][i]), 1)]
+               for i in range(px.shape[0])]
+        pframes.append({"frame": k, "sph_time_s": round(float(frame["t"]), 4),
+                        "sph_step": int(frame["step"]),
+                        "max_speed_mps": round(float(spd.max()), 4),
+                        "columns": ["lon", "lat", "speed_mps", "density"],
+                        "points": pts})
+    (out_dir / "particle_frames.json").write_text(json.dumps({
+        "engine": "sph_wcsph", "georeferenced": False,
+        "disclaimer": "SPH demonstration footprint — visualization only; not georeferenced or "
+                      "operationally validated.",
+        "particle_count": int(px.shape[0]), "frames": len(pframes),
+        "physical_duration_s": round(float(times[-1]), 4),
+        "footprint": footprint, "particle_frames": pframes,
+    }), encoding="utf-8")
+
     summary = {
         "engine": "sph_wcsph",
         "engine_label": "SPH (genuine WCSPH, Phase-4 reduced-resolution prototype)",
@@ -215,6 +250,7 @@ def run(sc: scen.UjjaniScenario, hydrograph: dict, out_dir: Path,
         "status": "reduced-resolution 2D prototype — genuine WCSPH solver; NOT full-scale "
                   "georeferenced Ujjani. GeoJSON uses a DEMONSTRATION affine placement at the dam.",
         "georeferenced": False,
+        "footprint": footprint,
         "scale": scale,
         "particle_count": m["particle_count"],
         "smoothing_length_m": m["smoothing_length_m"],
@@ -257,6 +293,8 @@ def run(sc: scen.UjjaniScenario, hydrograph: dict, out_dir: Path,
         "max_density": m["max_density"], "min_density": m["min_density"],
         "frames": len(res.frames),
         "status": summary["status"],
+        "footprint": footprint,
+        "particle_frames_file": str(out_dir / "particle_frames.json"),
         "provenance": "Genuine 2D WCSPH (Phase-2 solver) on a scenario-derived reduced dam-break; "
                       "reduced-resolution prototype, NOT georeferenced Ujjani. MODEL DEMONSTRATION.",
     }
