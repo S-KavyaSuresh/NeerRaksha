@@ -153,7 +153,7 @@ def get_result_layer(job_id: str, layer: str):
 
 @router.get("/{job_id}/impact")
 def get_impact(job_id: str):
-    _require(job_id)
+    record = _require(job_id)
     rd = jobs.results_path(job_id)
     if rd is None:
         raise HTTPException(409, detail={"code": "SIMULATION_NOT_READY", "message": "No results yet."})
@@ -162,7 +162,19 @@ def get_impact(job_id: str):
     if not fe.exists():
         raise HTTPException(404, detail={"code": "NO_FLOOD_EXTENT", "message": "flood_extent.geojson not produced."})
     summary = jobs.load_summary(job_id) or {}
-    return impact.analyse(fe, rd, summary_area_km2=summary.get("flooded_area_km2"))
+    source = {
+        "api": "/api/simulations/{id}/impact — general simulation lifecycle "
+               "(approximate / SPH / Delft3D demo engine, NOT the dedicated Ujjani dam-break scenario)",
+        "scenario_id": job_id,
+        "engine": record.get("resolved_engine") or record.get("engine"),
+        "engine_label": record.get("engine_label"),
+        "model_classification": record.get("data_class") or "MODEL OUTPUT",
+        "fallback_used": record.get("fallback_used", False),
+        "validated_hydraulic_output": record.get("validated_hydraulic_output", False),
+        "flood_extent_source": str(fe),
+        "results_dir": str(rd),
+    }
+    return impact.analyse(fe, rd, summary_area_km2=summary.get("flooded_area_km2"), source=source)
 
 
 @router.get("/{job_id}/export/{fmt}")

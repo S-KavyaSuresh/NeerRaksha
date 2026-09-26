@@ -1,0 +1,107 @@
+{
+  "source": {
+    "api": "/api/simulations/{id}/impact \u2014 general simulation lifecycle (approximate / SPH / Delft3D demo engine, NOT the dedicated Ujjani dam-break scenario)",
+    "scenario_id": "sim-fda5726843234800",
+    "engine": "approximate_2d_flood_routing_prototype",
+    "engine_label": "Approximate 2D flood-routing prototype",
+    "model_classification": "MODEL OUTPUT",
+    "fallback_used": false,
+    "validated_hydraulic_output": false,
+    "flood_extent_source": "D:\\SIH 2026\\Kavya\\NeerRaksha\\results\\ujjani\\major_breach\\flood_extent.geojson",
+    "results_dir": "D:\\SIH 2026\\Kavya\\NeerRaksha\\results\\ujjani\\major_breach",
+    "population_dataset": {
+      "dataset": "WorldPop Global 2000-2020 Constrained, India 2020, UN-adjusted",
+      "product": "Global_2000_2020_Constrained / BSGM / UN-adjusted",
+      "year": 2020,
+      "resolution": "3 arc-seconds (~100 m)",
+      "crs": "EPSG:4326",
+      "doi": "10.5258/SOTON/WP00684",
+      "source_url": "https://hub.worldpop.org/doi/10.5258/SOTON/WP00684",
+      "license": "CC-BY-4.0"
+    }
+  },
+  "data_classification": {
+    "flood_extent": "MODEL OUTPUT (Delft3D / SPH / approximate)",
+    "roads / buildings / facilities / settlements": "REAL DATA (OpenStreetMap)",
+    "counts": "DERIVED IMPACT (spatial intersection of MODEL OUTPUT with REAL DATA) \u2014 not observed damage",
+    "population": "OBSERVATION / census \u2014 NOT CONNECTED"
+  },
+  "flooded_area_km2": 15.335295456366893,
+  "roads": {
+    "status": "ok",
+    "source": "OpenStreetMap (roads_osm.geojson \u2014 curated road-network-only extract; 1955/1955 line features carry a `highway` tag, no waterway/railway/barrier geometry)",
+    "road_filter": "highway IS NOT NULL",
+    "length_crs": "EPSG:32643",
+    "total_in_dataset": 1955,
+    "affected_count": 55,
+    "approx_flooded_length_km": 26.93,
+    "by_type": {
+      "unclassified": 21,
+      "track": 12,
+      "trunk": 8,
+      "tertiary": 8,
+      "residential": 6
+    }
+  },
+  "buildings": {
+    "status": "ok",
+    "source": "OpenStreetMap (osm_ujjani.gpkg, layer multipolygons, building IS NOT NULL)",
+    "crs": "EPSG:4326",
+    "footprint_crs": "EPSG:32643",
+    "total_in_dataset": 164,
+    "affected_count": 11,
+    "approx_flooded_footprint_km2": 0.00313
+  },
+  "facilities": {
+    "status": "ok",
+    "source": "OpenStreetMap (facilities_osm.geojson)",
+    "category_attribute": "amenity",
+    "total_in_dataset": 18,
+    "total_by_type": {
+      "hospital": 13,
+      "school": 3,
+      "college": 1,
+      "clinic": 1
+    },
+    "affected_count": 0,
+    "affected": [],
+    "by_type": {}
+  },
+  "settlements": {
+    "status": "ok",
+    "source": "OpenStreetMap (osm_ujjani.gpkg, layer points, place IS NOT NULL)",
+    "crs": "EPSG:4326",
+    "geometry_note": "OSM place nodes (settlement centres), not census/administrative boundaries; a settlement counts as affected only when its representative point lies in the extent",
+    "total_in_dataset": 5,
+    "affected_count": 0,
+    "affected": []
+  },
+  "population": {
+    "dataset": "WorldPop Global 2000-2020 Constrained, India 2020, UN-adjusted",
+    "product": "Global_2000_2020_Constrained / BSGM / UN-adjusted",
+    "year": 2020,
+    "resolution": "3 arc-seconds (~100 m)",
+    "units": "estimated persons per pixel",
+    "method": "flood-polygon raster mask, cell-centre inclusion (all_touched=False)",
+    "nodata_handling": "NoData / non-finite cells excluded from the sum (contribute nothing)",
+    "doi": "10.5258/SOTON/WP00684",
+    "source_url": "https://hub.worldpop.org/doi/10.5258/SOTON/WP00684",
+    "license": "CC-BY-4.0",
+    "classification": "DERIVED IMPACT (estimate) \u2014 modelled exposure to the modelled inundation extent; not people displaced / affected / casualties / surveyed",
+    "temporal_caveat": "2020 population estimate overlaid on a modelled flood extent; not the population present at the time of any specific past or future event",
+    "validation_status": "NOT PERFORMED",
+    "status": "ok",
+    "population_exposed_estimate": 6477,
+    "crs": "EPSG:4326",
+    "valid_cells": 316,
+    "note": null
+  },
+  "validation_status": "NOT PERFORMED",
+  "note": "Counts are model-derived spatial intersections, not surveyed damage. status 'ok' with affected_count 0 means the modelled extent does not reach that asset class; status 'unavailable' means the dataset itself is missing.",
+  "flood_bounds_lonlat": [
+    75.073616,
+    18.034449,
+    75.155839,
+    18.113894
+  ]
+}

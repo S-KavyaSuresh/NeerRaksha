@@ -11,6 +11,7 @@ No silent fallback: if the requested engine fails, the run fails with that reaso
 from __future__ import annotations
 
 import time
+import uuid
 from pathlib import Path
 
 from . import config
@@ -32,7 +33,7 @@ def _approx_scenario_dict(sc: scen.UjjaniScenario) -> dict:
             "breach_width_m": sc.breach_width_m, "breach_depth_m": sc.breach_depth_m}
 
 
-def run_scenario(payload: dict, progress=lambda p, m="": None) -> dict:
+def run_scenario(payload: dict, progress=lambda p, m="": None, run_id: str | None = None) -> dict:
     started = time.perf_counter()
     progress(3, "Building and validating scenario")
     try:
@@ -41,7 +42,13 @@ def run_scenario(payload: dict, progress=lambda p, m="": None) -> dict:
         return {"ok": False, "stage": "scenario", "reason": str(exc)}
 
     engine = sc.engine
-    out_root = RESULTS_ROOT / engine
+    # Each run gets its own results directory: RESULTS_ROOT/<engine>/<run_token>.
+    # `run_id` is the scn-<id> job id when called from the async job runner; a
+    # standalone call (tests, scripts) gets a generated token. This stops a later
+    # run from overwriting the flood_extent.geojson that an earlier job's
+    # /impact, /export and /timeline endpoints still resolve to via results_dir.
+    run_token = run_id or f"{time.strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
+    out_root = RESULTS_ROOT / engine / run_token
     out_root.mkdir(parents=True, exist_ok=True)
 
     progress(10, "Generating breach discharge hydrograph")

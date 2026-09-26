@@ -88,3 +88,25 @@ export async function getSimulationParticles(id, signal) {
 }
 export const scenarioExportUrl = (id, fmt) => `${API_BASE}/api/scenarios/${id}/export/${fmt}`
 export const simulationExportUrl = (id, fmt) => `${API_BASE}/api/simulations/${id}/export/${fmt}`
+
+// --- OBSERVATION branch: Sentinel-1 SAR water/flood evidence (Google Earth Engine) ---
+export async function getObservationStatus(signal) {
+  const { data } = await api.get('/api/remote-sensing/status', { signal })
+  return data
+}
+export async function runObservation(body, signal) {
+  const { data } = await api.post('/api/remote-sensing/sentinel1/observe', body, { signal, timeout: 15000 })
+  return data
+}
+export async function getObservationJob(id, signal) {
+  const { data } = await api.get(`/api/remote-sensing/jobs/${id}`, { signal })
+  return data
+}
+export async function getObservationResult(id, signal) {
+  const { data } = await api.get(`/api/remote-sensing/jobs/${id}/result`, { signal, timeout: 20000 })
+  return data
+}
+export async function compareObservationToModel(id, scenarioId, signal) {
+  const { data } = await api.get(`/api/remote-sensing/jobs/${id}/compare/${scenarioId}`, { signal, timeout: 20000 })
+  return data
+}

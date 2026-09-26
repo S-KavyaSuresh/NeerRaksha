@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Bell, ChevronLeft, ChevronRight, CircleHelp, LayoutDashboard, SlidersHorizontal, Play, ChartNoAxesCombined, FlaskConical, Waves, ShieldAlert, Download, MapPin, X } from 'lucide-react'
+import { Bell, ChevronLeft, ChevronRight, CircleHelp, LayoutDashboard, SlidersHorizontal, Play, ChartNoAxesCombined, FlaskConical, Waves, ShieldAlert, Download, MapPin, Satellite, X } from 'lucide-react'
 import { useDashboard } from '../store/useDashboard'
 import { useIntelligence } from '../services/useIntelligence'
 import IntelligencePanel from '../components/dashboard/IntelligencePanel'
@@ -17,7 +17,7 @@ import { useSimulationRun } from '../services/useSimulationRun'
 import '../styles/branding.css'
 
 const MapView = lazy(() => import('../components/map/MapView'))
-const navigation = [['overview',LayoutDashboard,'Overview'],['scenario',SlidersHorizontal,'Scenario Studio'],['simulation',Play,'Simulation'],['ujjani-scenario',Waves,'Ujjani Dam-Break'],['comparison',ChartNoAxesCombined,'Model Comparison'],['benchmark',FlaskConical,'Benchmark'],['impact',ShieldAlert,'Impact Analysis'],['exports',Download,'Export Center']]
+const navigation = [['overview',LayoutDashboard,'Overview'],['scenario',SlidersHorizontal,'Scenario Studio'],['simulation',Play,'Simulation'],['ujjani-scenario',Waves,'Ujjani Dam-Break'],['comparison',ChartNoAxesCombined,'Model Comparison'],['benchmark',FlaskConical,'Benchmark'],['impact',ShieldAlert,'Impact Analysis'],['observation',Satellite,'Satellite Observation'],['exports',Download,'Export Center']]
 
 export default function DashboardLayout() {
   useMapTools()

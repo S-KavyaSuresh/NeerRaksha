@@ -8,3 +8,10 @@ python-dotenv>=1.1,<2.0
 httpx>=0.28,<1.0
 pandas>=2.2,<3.0
 rasterio>=1.3,<2.0
+geopandas>=1.0,<2.0
+shapely>=2.0,<3.0
+pyogrio>=0.8,<1.0
+# OBSERVATION branch (Sentinel-1 via Google Earth Engine). Optional at runtime:
+# without earthengine-api / GEE auth the observation API returns status "unavailable".
+earthengine-api>=1.4,<2.0
+requests>=2.32,<3.0

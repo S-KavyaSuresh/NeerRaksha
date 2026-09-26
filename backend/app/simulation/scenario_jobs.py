@@ -88,7 +88,7 @@ def _run(job_id: str) -> None:
 
     try:
         payload = (get(job_id) or {}).get("payload", {})
-        result = scenario_run.run_scenario(payload, progress=progress)
+        result = scenario_run.run_scenario(payload, progress=progress, run_id=job_id)
         if not result.get("ok"):
             _update(job_id, status="failed", progress=100,
                     message=result.get("reason", "scenario run failed"),

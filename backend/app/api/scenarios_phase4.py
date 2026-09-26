@@ -167,14 +167,29 @@ def get_layer(job_id: str, layer: str):
 
 @router.get("/{job_id}/impact")
 def get_impact(job_id: str):
-    _require(job_id)
+    rec = _require(job_id)
     d = _results_dir(job_id)
     fe = d / "flood_extent.geojson"
     if not fe.exists():
         raise HTTPException(404, detail={"code": "NO_FLOOD_EXTENT", "message": "flood_extent.geojson not produced."})
     from simulation import impact
     r = scenario_jobs.results(job_id) or {}
-    return impact.analyse(fe, d, summary_area_km2=(r.get("summary") or {}).get("flooded_area_km2"))
+    scn = r.get("scenario") or {}
+    source = {
+        "api": "/api/scenarios/{id}/impact — dedicated Ujjani dam-break scenario",
+        "scenario_id": job_id,
+        "engine": r.get("engine") or rec.get("engine"),
+        "engine_label": r.get("engine_label"),
+        "scenario_type": r.get("preset") or scn.get("preset"),
+        "model_classification": r.get("data_classification") or rec.get("data_class") or "MODEL OUTPUT",
+        "run_class": r.get("run_class") or rec.get("run_class"),
+        "validated_hydraulic_output": False,
+        "flood_extent_source": str(fe),
+        "results_dir": r.get("results_dir") or str(d),
+        "release_representation": r.get("release_representation"),
+    }
+    return impact.analyse(fe, d, summary_area_km2=(r.get("summary") or {}).get("flooded_area_km2"),
+                          source=source)
 
 
 @router.get("/{job_id}/export/{fmt}")

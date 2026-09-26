@@ -90,10 +90,14 @@ export default function IntelligencePanel() {
           <div><dt>Max displacement</dt><dd>{num(sphSummary.max_displacement_m, 2)} m</dd></div>
           <div><dt>Frames</dt><dd>{sphSummary.frames}</dd></div>
         </>}
+        {impact?.source?.engine_label && <div><dt>Impact derived from</dt><dd>{impact.source.engine_label}</dd></div>}
         <div><dt>Roads affected</dt><dd>{impact?.roads?.status === 'ok' ? `${impact.roads.affected_count} / ${impact.roads.total_in_dataset} (~${num(impact.roads.approx_flooded_length_km, 1)} km)` : 'Unavailable'}</dd></div>
+        <div><dt>Buildings affected</dt><dd>{impact?.buildings?.status === 'ok' ? `${impact.buildings.affected_count} / ${impact.buildings.total_in_dataset}` : 'Unavailable'}</dd></div>
         <div><dt>Facilities affected</dt><dd>{impact?.facilities?.status === 'ok' ? `${impact.facilities.affected_count} / ${impact.facilities.total_in_dataset}` : 'Unavailable'}</dd></div>
-        <div><dt>Settlements affected</dt><dd>Unavailable{impact?.settlements?.reason ? ` — ${impact.settlements.reason}` : ''}</dd></div>
-        <div><dt>Population exposure</dt><dd>Unavailable — no population dataset connected</dd></div>
+        <div><dt>Settlements affected</dt><dd>{impact?.settlements?.status === 'ok' ? `${impact.settlements.affected_count} / ${impact.settlements.total_in_dataset}` : `Unavailable${impact?.settlements?.reason ? ` — ${impact.settlements.reason}` : ''}`}</dd></div>
+        <div><dt>Est. population exposed</dt><dd>{impact?.population?.status === 'ok'
+          ? `${Number(impact.population.population_exposed_estimate).toLocaleString()} · ${impact.population.dataset && impact.population.dataset.includes('WorldPop') ? 'WorldPop 2020' : 'estimate'} · DERIVED IMPACT`
+          : `Unavailable${impact?.population?.reason ? ` — ${impact.population.reason}` : ' — no population dataset connected'}`}</dd></div>
         <div><dt>Validation</dt><dd><strong>NOT PERFORMED</strong></dd></div>
       </dl>}
 

@@ -184,14 +184,20 @@ export default function ScenarioRunPage() {
       </div>}
 
       <div className="table-scroll"><table>
-        <caption>Impact analysis — spatial intersection of MODEL OUTPUT flood extent with REAL DATA (OpenStreetMap)</caption>
+        <caption>Impact analysis — DERIVED IMPACT: spatial intersection of MODEL OUTPUT flood extent with REAL DATA (OpenStreetMap)
+          {backendImpact?.source?.engine_label ? ` · derived from ${backendImpact.source.engine_label}` : ''}</caption>
         <thead><tr><th>Layer</th><th>Affected</th><th>Source / status</th></tr></thead>
         <tbody>
           <tr><td>Flooded area</td><td>{fmt(result.max_depth_m != null ? (result.summary?.flooded_area_km2 ?? backendImpact?.flooded_area_km2) : null, 3)} km²</td><td>MODEL OUTPUT</td></tr>
           <tr><td>Roads</td><td>{backendImpact?.roads?.status === 'ok' ? `${backendImpact.roads.affected_count} / ${backendImpact.roads.total_in_dataset} (~${fmt(backendImpact.roads.approx_flooded_length_km, 1)} km)` : 'Unavailable'}</td><td>{backendImpact?.roads?.source || backendImpact?.roads?.reason || '…'}</td></tr>
+          <tr><td>Buildings</td><td>{backendImpact?.buildings?.status === 'ok' ? `${backendImpact.buildings.affected_count} / ${backendImpact.buildings.total_in_dataset}` : 'Unavailable'}</td><td>{backendImpact?.buildings?.source || backendImpact?.buildings?.reason || '…'}</td></tr>
           <tr><td>Facilities</td><td>{backendImpact?.facilities?.status === 'ok' ? `${backendImpact.facilities.affected_count} / ${backendImpact.facilities.total_in_dataset}` : 'Unavailable'}</td><td>{backendImpact?.facilities?.source || backendImpact?.facilities?.reason || '…'}</td></tr>
-          <tr><td>Settlements</td><td>Unavailable</td><td>{backendImpact?.settlements?.reason || 'dataset not connected'}</td></tr>
-          <tr><td>Population</td><td>Unavailable</td><td>{backendImpact?.population?.reason || 'no population dataset connected'}</td></tr>
+          <tr><td>Settlements</td><td>{backendImpact?.settlements?.status === 'ok' ? `${backendImpact.settlements.affected_count} / ${backendImpact.settlements.total_in_dataset}` : 'Unavailable'}</td><td>{backendImpact?.settlements?.source || backendImpact?.settlements?.reason || 'dataset not connected'}</td></tr>
+          <tr><td>Est. population exposed</td>
+            <td>{backendImpact?.population?.status === 'ok' ? Number(backendImpact.population.population_exposed_estimate).toLocaleString() : 'Unavailable'}</td>
+            <td>{backendImpact?.population?.status === 'ok'
+              ? `${backendImpact.population.dataset || 'WorldPop 2020'} · DERIVED IMPACT (estimate), not observed`
+              : (backendImpact?.population?.reason || 'no population dataset connected')}</td></tr>
         </tbody>
       </table></div>
 

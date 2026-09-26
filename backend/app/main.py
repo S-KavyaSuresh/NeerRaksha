@@ -6,6 +6,7 @@ from app.api.routes import router
 from app.api.simulations import router as simulations_router
 from app.api.benchmarks import router as benchmarks_router
 from app.api.scenarios_phase4 import router as scenarios_phase4_router
+from app.api.remote_sensing import router as remote_sensing_router
 from app.core.config import settings
 from app.database.session import DatabaseUnavailable
 
@@ -15,6 +16,7 @@ app.include_router(router)
 app.include_router(simulations_router)
 app.include_router(benchmarks_router)
 app.include_router(scenarios_phase4_router)
+app.include_router(remote_sensing_router)
 
 
 @app.exception_handler(DatabaseUnavailable)
